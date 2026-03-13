@@ -1,0 +1,14 @@
+.env
+.env.*
+.env.local
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.bak-*
+*.corrupt-*
+.venv/
+.claude/
+providers.json
+active.env
+codex.env
