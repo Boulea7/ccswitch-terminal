@@ -1,6 +1,6 @@
 <div align="center">
 
-# ccsw
+# ccswitch--terminal
 
 **Unified API provider switcher for Claude Code + Codex CLI + Gemini CLI**
 
@@ -553,6 +553,6 @@ MIT
 
 <div align="right">
 
-[⬆ Back to top](#ccsw)
+[⬆ Back to top](#ccswitch--terminal)
 
 </div>

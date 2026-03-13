@@ -1,6 +1,6 @@
 <div align="center">
 
-# ccsw
+# ccswitch--terminal
 
 **Claude Code + Codex CLI + Gemini CLI 三端统一 API 服务商切换工具**
 
@@ -546,6 +546,6 @@ MIT
 
 <div align="right">
 
-[⬆ 返回顶部](#ccsw)
+[⬆ 返回顶部](#ccswitch--terminal)
 
 </div>
