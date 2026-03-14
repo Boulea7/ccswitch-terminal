@@ -104,8 +104,8 @@ Quick start:
   ccsw 88code                       # Switch Claude Code (short form)
   ccsw claude 88code                # Switch Claude Code (explicit)
   cxsw 88code                       # Switch Codex
-  eval "$(gcsw myprovider)"        # Switch Gemini (activates env var)
-  eval "$(ccsw all 88code)"        # Switch all tools
+  gcsw myprovider                   # Switch Gemini
+  ccsw all 88code                   # Switch all tools
   ccsw add myprovider               # Add new provider (interactive)
 ```
 
@@ -126,11 +126,11 @@ ccsw claude 88code
 # Switch Codex CLI (automatically activates OPENAI env vars in current shell)
 cxsw 88code
 
-# Switch Gemini CLI (activates GEMINI_API_KEY in current shell)
-eval "$(gcsw myprovider)"
+# Switch Gemini CLI (GEMINI_API_KEY activated automatically)
+gcsw myprovider
 
 # Switch all three tools at once
-eval "$(ccsw all 88code)"
+ccsw all 88code
 
 # List all providers and active status
 ccsw list
@@ -144,13 +144,10 @@ ccsw show
 | Command | Equivalent | Description |
 |---------|------------|-------------|
 | `ccsw <provider>` | `ccsw claude <provider>` | Omit tool name to default to Claude |
-| `cxsw <provider>` | (eval built-in) `ccsw codex <provider>` | Codex shortcut, auto-activates OPENAI env vars |
-| `eval "$(gcsw <provider>)"` | `eval "$(ccsw gemini <provider>)"` | Gemini shortcut, requires explicit `eval` |
+| `cxsw <provider>` | `ccsw codex <provider>` | Codex shortcut, auto-activates OPENAI env vars |
+| `gcsw <provider>` | `ccsw gemini <provider>` | Gemini shortcut, auto-activates GEMINI_API_KEY |
+| `ccsw all <provider>` | — | Switch all three tools, all env vars activated |
 | `ccsw <subcommand>` | — | `list` / `show` / `add` / `remove` / `alias` pass-through |
-
-> [!NOTE]
-> `cxsw` has `eval` built into its shell function — just run `cxsw 88code` to activate `OPENAI_API_KEY` / `OPENAI_BASE_URL` in the current shell.
-> `gcsw` does not include `eval` — you must write `eval "$(gcsw ...)"` explicitly to activate `GEMINI_API_KEY`.
 
 ---
 
@@ -266,35 +263,26 @@ Running `ccsw all claude-only`:
 
 ---
 
-## Gemini eval Mode
+## Gemini Env Activation
 
-### Why eval Is Required
-
-A child process cannot modify its parent shell's environment variables. `gcsw myprovider` runs as a subprocess — it cannot inject `GEMINI_API_KEY` into the current shell directly.
-
-The solution: output `export GEMINI_API_KEY='...'` to **stdout**, which `eval` executes in the current shell:
-
-```
-stdout  →  export GEMINI_API_KEY='...'    (captured and executed by eval)
-stderr  →  [gemini] Updated ...           (status messages, shown in terminal)
-```
-
-### Three Activation Methods
+`GEMINI_API_KEY` is an environment variable — a child process cannot write it into the parent shell. The `gcsw` and `ccsw gemini/all` shell functions handle `eval` internally, so you can run them directly without any wrapper.
 
 ```bash
-# Method 1: Activate immediately (recommended)
-eval "$(gcsw myprovider)"
-eval "$(ccsw all 88code)"   # switch all tools + activate Gemini
+# Switch Gemini (env var activated automatically)
+gcsw myprovider
 
-# Method 2: Auto-activate on shell startup (configured by bootstrap.sh)
-# ~/.zshrc already contains: source ~/.ccswitch/active.env
-
-# Method 3: Manual source
-source ~/.ccswitch/active.env
+# Switch all tools (GEMINI_API_KEY and OPENAI vars all activated)
+ccsw all 88code
 ```
 
-> [!WARNING]
-> In automated scripts, ensure `eval "$(gcsw ...)"` has correct quoting (outer double quotes). Incorrect quoting may cause special characters in the token to truncate the export statement.
+### When Calling the Python Script Directly (CI/CD or Docker)
+
+When the shell functions are not available, `eval` is still required:
+
+```bash
+eval "$(python3 ccsw.py gemini myprovider)"
+eval "$(python3 ccsw.py all 88code)"
+```
 
 ### active.env Persistence
 
@@ -481,12 +469,12 @@ Yes. Claude Code re-reads the `env` block of `~/.claude/settings.json` before ea
 </details>
 
 <details>
-<summary><b>Q: After eval "$(gcsw ...)", $GEMINI_API_KEY is still empty?</b></summary>
+<summary><b>Q: After running gcsw, $GEMINI_API_KEY is still empty?</b></summary>
 
 Check:
-1. Run `gcsw myprovider` directly — does stdout show `export GEMINI_API_KEY=...`?
+1. Are the shell functions installed? Run `type gcsw` to confirm.
 2. Are you running it in the same shell session? (subshells do not inherit)
-3. Is the quoting correct? `eval "$(gcsw ...)"` — outer double quotes are required.
+3. If calling the Python script directly (bypassing the shell function), you still need `eval "$(python3 ccsw.py gemini ...)"`.
 
 </details>
 

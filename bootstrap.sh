@@ -36,39 +36,71 @@ fi
 mkdir -p "$CCSWITCH_DIR"
 chmod +x "$CCSW_PY"
 
-# ── Inject smart function block ───────────────────────────────────────────────
-# Marker used to detect existing installation (do not change)
+# ── Inject / upgrade smart function block ─────────────────────────────────────
+# Up-to-date marker: gcsw has eval built-in (v2+)
 MARKER="# ccsw - smart provider switcher"
 
-if grep -qF '_CCSW_PY=' "$RC_FILE" 2>/dev/null && grep -qF 'ccsw() {' "$RC_FILE" 2>/dev/null; then
-    echo "[skip] ccsw functions already present in $RC_FILE"
+if grep -qF 'gcsw() { eval' "$RC_FILE" 2>/dev/null; then
+    echo "[skip] ccsw functions already up-to-date in $RC_FILE"
+elif grep -qF '_CCSW_PY=' "$RC_FILE" 2>/dev/null; then
+    # Old installation found — patch gcsw and ccsw in-place
+    UPGRADE_RC="$RC_FILE" python3 <<'PYEOF'
+import os, pathlib
+
+rc = pathlib.Path(os.environ["UPGRADE_RC"])
+text = rc.read_text()
+
+# Patch 1: gcsw — add eval wrapper
+text = text.replace(
+    'gcsw() { python3 "$_CCSW_PY" gemini "$@"; }',
+    'gcsw() { eval "$(python3 "$_CCSW_PY" gemini "$@")"; }'
+)
+
+# Patch 2: ccsw — split gemini|all into its own eval branch
+old_branch = (
+    '    claude|codex|gemini|all|list|show|add|remove|alias)\n'
+    '      python3 "$_CCSW_PY" "$@" ;;'
+)
+new_branch = (
+    '    gemini|all)\n'
+    '      eval "$(python3 "$_CCSW_PY" "$@")" ;;\n'
+    '    claude|codex|list|show|add|remove|alias)\n'
+    '      python3 "$_CCSW_PY" "$@" ;;'
+)
+text = text.replace(old_branch, new_branch)
+
+rc.write_text(text)
+PYEOF
+    echo "[updated] Upgraded gcsw and ccsw in $RC_FILE"
 else
+    # Fresh install — inject full function block
     {
         printf '\n%s\n' "$MARKER"
         # Remove old simple alias if present (idempotent on fresh installs)
         printf 'unalias ccsw 2>/dev/null || true\n'
-        # Store resolved path in a variable so functions survive directory changes
+        # Store resolved path so functions survive directory changes
         printf '_CCSW_PY=%q\n' "$CCSW_PY"
         # ccsw: smart wrapper — omitting the tool name defaults to 'claude'
-        #   ccsw 88code          -> ccsw claude 88code
-        #   ccsw claude 88code   -> ccsw claude 88code  (explicit)
-        #   ccsw list / show / add / ...  -> pass-through
-        #   ccsw --help / -h / ""         -> pass-through to python3 (shows top-level help)
+        #   ccsw 88code        -> ccsw claude 88code
+        #   ccsw gemini/all    -> eval activated automatically
+        #   ccsw list/show/... -> pass-through
         printf 'ccsw() {\n'
         printf '  case "${1:-}" in\n'
         printf '    ""|--help|-h|help|-*)\n'
         printf '      python3 "$_CCSW_PY" "$@" ;;\n'
-        printf '    claude|codex|gemini|all|list|show|add|remove|alias)\n'
+        printf '    gemini|all)\n'
+        printf '      eval "$(python3 "$_CCSW_PY" "$@")" ;;\n'
+        printf '    claude|codex|list|show|add|remove|alias)\n'
         printf '      python3 "$_CCSW_PY" "$@" ;;\n'
         printf '    *)\n'
         printf '      python3 "$_CCSW_PY" claude "$@" ;;\n'
         printf '  esac\n'
         printf '}\n'
-        # cxsw: shortcut for codex switching (eval activates OPENAI env vars immediately)
+        # cxsw: codex shortcut (eval built-in, activates OPENAI env vars)
         printf 'cxsw() { eval "$(python3 "$_CCSW_PY" codex "$@")"; }\n'
-        # gcsw: shortcut for gemini switching (use with eval for env activation)
-        printf 'gcsw() { python3 "$_CCSW_PY" gemini "$@"; }\n'
-        # ccswitch: backward-compatible full pass-through function (quote-safe)
+        # gcsw: gemini shortcut (eval built-in, activates GEMINI_API_KEY)
+        printf 'gcsw() { eval "$(python3 "$_CCSW_PY" gemini "$@")"; }\n'
+        # ccswitch: backward-compatible full pass-through
         printf 'ccswitch() { python3 "$_CCSW_PY" "$@"; }\n'
     } >> "$RC_FILE"
     echo "[ok]   Added ccsw/cxsw/gcsw functions to $RC_FILE"
@@ -112,6 +144,6 @@ echo "  ccsw list                         # List available providers"
 echo "  ccsw 88code                       # Switch Claude Code (short form)"
 echo "  ccsw claude 88code                # Switch Claude Code (explicit)"
 echo "  cxsw 88code                       # Switch Codex"
-echo "  eval \"\$(gcsw myprovider)\"        # Switch Gemini (activates env var)"
-echo "  eval \"\$(ccsw all 88code)\"        # Switch all tools"
+echo "  gcsw myprovider                   # Switch Gemini"
+echo "  ccsw all 88code                   # Switch all tools"
 echo "  ccsw add myprovider               # Add new provider (interactive)"

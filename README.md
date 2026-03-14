@@ -104,8 +104,8 @@ Quick start:
   ccsw 88code                       # Switch Claude Code (short form)
   ccsw claude 88code                # Switch Claude Code (explicit)
   cxsw 88code                       # Switch Codex
-  eval "$(gcsw myprovider)"        # Switch Gemini (activates env var)
-  eval "$(ccsw all 88code)"        # Switch all tools
+  gcsw myprovider                   # Switch Gemini
+  ccsw all 88code                   # Switch all tools
   ccsw add myprovider               # Add new provider (interactive)
 ```
 
@@ -126,11 +126,11 @@ ccsw claude 88code
 # 切换 Codex CLI（自动激活 OPENAI 环境变量到当前 shell）
 cxsw 88code
 
-# 切换 Gemini CLI（立即激活 GEMINI_API_KEY 到当前 shell）
-eval "$(gcsw myprovider)"
+# 切换 Gemini CLI（自动激活 GEMINI_API_KEY 到当前 shell）
+gcsw myprovider
 
 # 同时切换全部三个工具
-eval "$(ccsw all 88code)"
+ccsw all 88code
 
 # 查看所有 Provider 及激活状态
 ccsw list
@@ -144,13 +144,10 @@ ccsw show
 | 命令 | 等价于 | 说明 |
 |------|--------|------|
 | `ccsw <provider>` | `ccsw claude <provider>` | 省略工具名默认切 Claude |
-| `cxsw <provider>` | （内置 eval）`ccsw codex <provider>` | Codex 快捷键，自动激活 OPENAI 环境变量 |
-| `eval "$(gcsw <provider>)"` | `eval "$(ccsw gemini <provider>)"` | Gemini 快捷键，需配合 `eval` 激活环境变量 |
+| `cxsw <provider>` | `ccsw codex <provider>` | Codex 快捷键，自动激活 OPENAI 环境变量 |
+| `gcsw <provider>` | `ccsw gemini <provider>` | Gemini 快捷键，自动激活 GEMINI_API_KEY |
+| `ccsw all <provider>` | — | 三端同时切换，环境变量一并激活 |
 | `ccsw <子命令>` | — | `list` / `show` / `add` / `remove` / `alias` 直通 |
-
-> [!NOTE]
-> `cxsw` 在 shell 函数内部已经包含 `eval`，直接运行即可激活 Codex 的 `OPENAI_API_KEY` / `OPENAI_BASE_URL`。
-> `gcsw` 不包含 `eval`，需要用户显式写 `eval "$(gcsw ...)"` 才能激活 `GEMINI_API_KEY`。
 
 ---
 
@@ -266,35 +263,26 @@ ccsw claude zhipu
 
 ---
 
-## Gemini eval 模式详解
+## Gemini 环境变量激活
 
-### 为什么需要 eval
-
-子进程无法修改父进程的环境变量。`gcsw myprovider` 是一个子进程，直接运行无法将 `GEMINI_API_KEY` 注入当前 shell。
-
-解决方案：将 `export GEMINI_API_KEY='...'` 输出到 **stdout**，由 `eval` 在当前 shell 中执行：
-
-```
-stdout  →  export GEMINI_API_KEY='...'    （被 eval 捕获并执行）
-stderr  →  [gemini] Updated ...           （状态信息，直接显示在终端）
-```
-
-### 三种激活方式
+`GEMINI_API_KEY` 是环境变量，子进程无法直接写入父 shell。`gcsw` 和 `ccsw gemini/all` 在 shell 函数层面已内置 `eval`，所以用户直接运行即可，无需手动 `eval "$(...)"` 。
 
 ```bash
-# 方式一：立即激活（推荐）
-eval "$(gcsw myprovider)"
-eval "$(ccsw all 88code)"   # 切换全部工具并激活 Gemini
+# 切换 Gemini（环境变量自动激活）
+gcsw myprovider
 
-# 方式二：开机自动激活（bootstrap.sh 已配置）
-# ~/.zshrc 中已添加：source ~/.ccswitch/active.env
-
-# 方式三：手动 source
-source ~/.ccswitch/active.env
+# 切换全部工具（GEMINI_API_KEY 和 OPENAI 变量一并激活）
+ccsw all 88code
 ```
 
-> [!WARNING]
-> 在自动化脚本中使用时，务必保证 `eval "$(gcsw ...)"` 引号完整（外层双引号）。若拆开写会导致 token 中的特殊字符截断 export 语句。
+### 在 CI/CD 或 Docker 中直接调用 Python 脚本时
+
+shell 函数不可用时，仍需手动 `eval`：
+
+```bash
+eval "$(python3 ccsw.py gemini myprovider)"
+eval "$(python3 ccsw.py all 88code)"
+```
 
 ### active.env 持久化
 
@@ -481,12 +469,12 @@ Token 配置为 `$MY_ENV_VAR`，但该环境变量当前未设置。
 </details>
 
 <details>
-<summary><b>Q: eval "$(gcsw ...)" 执行后 $GEMINI_API_KEY 还是空的？</b></summary>
+<summary><b>Q: 运行 gcsw 后 $GEMINI_API_KEY 还是空的？</b></summary>
 
 检查：
-1. 直接运行 `gcsw myprovider`，看 stdout 是否有 `export GEMINI_API_KEY=...`
+1. 是否通过 bootstrap.sh 安装了 shell 函数？直接运行 `type gcsw` 确认
 2. 是否在同一个 shell session 中执行（子 shell 不继承）
-3. 引号是否完整：`eval "$(gcsw ...)"` 外层双引号不能省略
+3. 若绕过 shell 函数直接调用 Python 脚本，仍需手动 `eval "$(python3 ccsw.py gemini ...)"`
 
 </details>
 
