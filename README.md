@@ -4,12 +4,9 @@
 
 **Claude Code + Codex CLI + Gemini CLI 三端统一 API 服务商切换工具**
 
-一条命令在 Claude Code、Codex CLI、Gemini CLI 三个 AI 终端工具间切换 API 后端。
-统一配置中心管理 Anthropic / OpenAI / Google 三套协议凭证，写入前自动时间戳备份。
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
-[![Zero Dependency](https://img.shields.io/badge/zero--dependency-stdlib_only-success.svg)](#安装)
+[![Zero Dependency](https://img.shields.io/badge/zero--dependency-stdlib_only-success.svg)](#快速安装)
 
 [English](README_EN.md) | 简体中文
 
@@ -17,301 +14,253 @@
 
 ---
 
-## 目录
+## 简介
 
-- [功能特性](#功能特性)
-- [工作原理](#工作原理)
-- [安装](#安装)
-- [快速开始](#快速开始)
-- [本地密钥：.env.local](#本地密钥envlocal)
-- [对话中热切换](#对话中热切换)
-- [三端独立配置](#三端独立配置)
-- [部分工具支持](#部分工具支持)
-- [Gemini eval 模式详解](#gemini-eval-模式详解)
-- [内置 Provider](#内置-provider)
-- [添加 Provider](#添加-provider)
-- [管理命令](#管理命令)
-- [配置文件格式](#配置文件格式)
-- [配置写入位置](#配置写入位置)
-- [使用场景](#使用场景)
-- [FAQ](#faq)
-- [给 AI 工具的安装提示词](#给-ai-工具的安装提示词)
+你同时在用 Claude Code、Codex CLI、Gemini CLI 吗？每次更换 API 服务商时，是否都要手动修改多个配置文件、记住不同格式的 token 字段？**ccswitch** 正是为此而生。
+
+- **一键切换**：`ccsw 88code` 即完成 Claude 切换；`ccsw all 88code` 三端同步
+- **配置隔离**：每个服务商为三套协议（Anthropic / OpenAI / Google）各自维护独立的 URL 和 Token
+- **安全优先**：Token 以 `$ENV_VAR` 形式引用，从不写入配置文件；写入前自动备份
+- **无缝衔接**：Claude Code 对话中实时热切换，Gemini 环境变量自动激活，无需重启
 
 ---
 
-## 功能特性
+## 快速安装
 
-- 一条命令同时切换 Claude Code、Codex CLI、Gemini CLI 三个工具的后端 Provider
-- 快捷命令：`ccsw <provider>` 默认切换 Claude；`cxsw` 切换 Codex（自动激活环境变量）；`gcsw` 切换 Gemini
-- `.env.local` 本地密钥文件支持：token 存本地文件，无需写入 shell 配置
-- Provider 配置持久化到 `~/.ccswitch/providers.json`
-- Token 支持 `$ENV_VAR` 引用，密钥不进配置文件
-- Gemini API Key 通过 `eval "$(gcsw ...)"` 立即在当前 shell 生效
-- 每个工具各自独立的 base_url 和 token 配置，三套协议互不干扰
-- Provider 可只支持部分工具，未配置的工具自动跳过，不影响 active 状态
-- Claude Code 会在每次请求前重新读取 `settings.json`，支持**对话中实时热切换**
-- 内置 `88code`、`zhipu`、`rightcode` Provider
-- 支持自定义别名（`88` → `88code`，`rc` → `rightcode`）
-- 写入前自动生成时间戳备份，防止配置丢失
-- 零依赖，仅需 Python 3.8+ 标准库
+**通过 Claude Code / Codex 一键安装** — 复制以下提示词，替换 `<...>` 占位符后直接发送：
 
----
+```
+请帮我安装 ccswitch (AI 终端工具 API 切换器)：
 
-## 工作原理
+仓库：https://github.com/Boulea7/ccswitch--terminal
+安装：克隆到 ~/ccsw → 运行 bootstrap.sh → source ~/.zshrc
 
-```mermaid
-flowchart LR
-    L([".env.local"]) -. "自动加载" .-> P
-    U(["ccsw 88code"]) --> P["ccsw.py"]
-    P -- "读取" --> DB[("~/.ccswitch\nproviders.json")]
-    P -- "解析 $TOKEN" --> E{{"env vars"}}
-    E -- "写入 + 备份" --> C["~/.claude/settings.json\nAnthropic 协议"]
-    E -- "写入 + 备份" --> X["~/.codex/auth.json\nOpenAI 协议"]
-    E -- "写入 + stdout export" --> G["~/.gemini/settings.json\nGoogle 协议"]
+然后帮我配置一个 provider：
+  名称: <供应商名>    别名: <简称>
+  Claude URL:   <https://api.example.com/anthropic>
+  Claude Token: <sk-ant-xxxx>
+  Codex URL:    <https://api.example.com/openai/v1>
+  Codex Token:  <sk-xxxx>
+  Gemini Key:   <gm-xxxx 或留空跳过>
+
+token 明文写入 ~/ccsw/.env.local，providers.json 中用 $ENV_VAR 引用。
+最后运行 ccsw list 和 ccsw show 确认。
 ```
 
-> [!NOTE]
-> **stdout / stderr 分离**：`ccsw` 所有状态信息写入 stderr（终端可见），Gemini `export GEMINI_API_KEY=...` 写入 stdout（被 `eval` 捕获执行）。这是 Gemini eval 模式能正常工作的基础。
+<details>
+<summary>示例：以 OpenRouter 为例的已填写版本</summary>
 
----
+```
+请帮我安装 ccswitch (AI 终端工具 API 切换器)：
 
-## 安装
+仓库：https://github.com/Boulea7/ccswitch--terminal
+安装：克隆到 ~/ccsw → 运行 bootstrap.sh → source ~/.zshrc
+
+然后帮我配置一个 provider：
+  名称: openrouter    别名: or
+  Claude URL:   https://openrouter.ai/api
+  Claude Token: sk-or-v1-xxxx
+  Codex URL:    https://openrouter.ai/api/v1
+  Codex Token:  sk-or-v1-xxxx
+  Gemini Key:   留空跳过
+
+token 明文写入 ~/ccsw/.env.local，providers.json 中用 $ENV_VAR 引用。
+最后运行 ccsw list 和 ccsw show 确认。
+```
+
+</details>
+
+**手动安装（3 行命令）：**
 
 ```bash
-git clone https://github.com/YOUR/ccsw ~/ccsw
+git clone https://github.com/Boulea7/ccswitch--terminal ~/ccsw
 bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # 或 source ~/.bashrc
 ```
 
-`bootstrap.sh` 会：
-1. 注册 `ccsw`、`cxsw`、`gcsw`、`ccswitch` 四个 shell 函数
-2. 在 shell rc 中添加 `source ~/.ccswitch/active.env`，实现 Gemini 环境变量开机持久化
-3. 在 shell rc 中添加 `source ~/.ccswitch/codex.env`，实现 Codex 环境变量开机持久化
-
-预期输出：
-```
-[ok]   Added ccsw/cxsw/gcsw functions to ~/.zshrc
-[ok]   Added active.env source line to ~/.zshrc
-[ok]   Added codex.env source line to ~/.zshrc
-
-Installation complete!
-
-Reload your shell:
-  source ~/.zshrc
-
-Quick start:
-  ccsw list                         # List available providers
-  ccsw 88code                       # Switch Claude Code (short form)
-  ccsw claude 88code                # Switch Claude Code (explicit)
-  cxsw 88code                       # Switch Codex
-  gcsw myprovider                   # Switch Gemini
-  ccsw all 88code                   # Switch all tools
-  ccsw add myprovider               # Add new provider (interactive)
-```
+`bootstrap.sh` 完成后会注册 `ccsw`、`cxsw`、`gcsw`、`ccswitch` 四个 shell 函数，并配置 Gemini / Codex 环境变量开机持久化。
 
 ---
 
-## 快速开始
-
-> [!TIP]
-> `ccsw <provider>` 省略工具名默认切换 Claude。完整子命令（`list`、`show`、`add` 等）照常透传。
+## 基础使用
 
 ```bash
-# 切换 Claude Code（省略工具名）
-ccsw 88code
+# -- 切换 --
+ccsw openrouter                   # 切换 Claude（省略工具名）
+cxsw openrouter                   # 切换 Codex（自动激活环境变量）
+gcsw myprovider                   # 切换 Gemini（自动激活环境变量）
+ccsw all openrouter               # 三端同时切换
 
-# 切换 Claude Code（显式）
-ccsw claude 88code
-
-# 切换 Codex CLI（自动激活 OPENAI 环境变量到当前 shell）
-cxsw 88code
-
-# 切换 Gemini CLI（自动激活 GEMINI_API_KEY 到当前 shell）
-gcsw myprovider
-
-# 同时切换全部三个工具
-ccsw all 88code
-
-# 查看所有 Provider 及激活状态
-ccsw list
-
-# 查看各工具当前激活的配置
-ccsw show
+# -- 管理 --
+ccsw list                         # 列出所有 Provider
+ccsw show                         # 当前激活配置
+ccsw add <name>                   # 新增/更新 Provider
+ccsw remove <name>                # 删除 Provider
+ccsw alias <alias> <provider>     # 添加别名
 ```
-
-### 快捷命令一览
-
-| 命令 | 等价于 | 说明 |
-|------|--------|------|
-| `ccsw <provider>` | `ccsw claude <provider>` | 省略工具名默认切 Claude |
-| `cxsw <provider>` | `ccsw codex <provider>` | Codex 快捷键，自动激活 OPENAI 环境变量 |
-| `gcsw <provider>` | `ccsw gemini <provider>` | Gemini 快捷键，自动激活 GEMINI_API_KEY |
-| `ccsw all <provider>` | — | 三端同时切换，环境变量一并激活 |
-| `ccsw <子命令>` | — | `list` / `show` / `add` / `remove` / `alias` 直通 |
 
 ---
 
-## 本地密钥：.env.local
+## 进阶功能
+
+<details>
+<summary><b>本地密钥：.env.local</b></summary>
 
 在 `ccsw.py` 同目录创建 `.env.local` 文件，可以将 token 存放在本地，**无需写入 `~/.zshrc` 或 `~/.bashrc`**。
 
 ```bash
 # ~/ccsw/.env.local（不会被提交到 git）
+OPENROUTER_API_KEY=sk-or-v1-xxxx
+AIHUBMIX_API_KEY=sk-xxxx
 CODE88_ANTHROPIC_AUTH_TOKEN=sk-ant-xxxx
 CODE88_OPENAI_API_KEY=sk-xxxx
-ZHIPU_ANTHROPIC_AUTH_TOKEN=sk-xxxx
 ```
 
 `ccsw` 启动时自动读取此文件，优先级低于已有的 shell 环境变量（不会覆盖已 `export` 的值）。
 
-支持的语法：
-
-```bash
-KEY=value with spaces           # 裸值
-KEY="quoted value"              # 双引号（支持转义 \" 和 \\）
-KEY='literal value'             # 单引号（无转义）
-KEY="line1
-line2"                          # 多行值
-export KEY=value                # export 前缀（自动去除）
-# 注释行                        # 以 # 开头的行跳过
-```
-
 > [!WARNING]
 > `.env.local` 包含明文密钥，请确保已在 `.gitignore` 中忽略此文件。
 
----
+</details>
 
-## 对话中热切换
+<details>
+<summary><b>对话中实时热切换</b></summary>
 
 Claude Code 在**每次 API 请求前**都会重新读取 `~/.claude/settings.json` 中的 `env` 块，因此：
 
 > 在另一个终端运行 `ccsw claude <provider>`，当前正在使用的 Claude Code 对话无需重启，**下一条消息就会使用新的 Provider**。
 
-操作步骤：
-
 ```bash
 # 终端 A：Claude Code 正在运行对话中
 
 # 终端 B：切换 provider
-ccsw claude zhipu
+ccsw claude openrouter
 
-# 回到终端 A：发下一条消息，已使用 zhipu provider
+# 回到终端 A：发下一条消息，已使用 openrouter provider
 ```
 
 > [!NOTE]
-> Codex CLI 同理，`cxsw <provider>` 切换后下次调用 Codex 即生效。
-> Gemini CLI 依赖 shell 环境变量，需要在**同一个** shell 中 `eval "$(gcsw ...)"` 才能实时生效。
+> Codex CLI 同理，`cxsw <provider>` 切换后下次调用即生效。
+> Gemini CLI 依赖 shell 环境变量，需在**同一个** shell 中执行 `gcsw` 才能实时生效。
 
----
+</details>
 
-## 三端独立配置
+<details>
+<summary><b>三端独立配置与环境变量</b></summary>
 
 **同一个 Provider 为每个工具维护独立的 URL 和 Token。**
 
-这是 ccsw 最核心的设计：Claude Code 使用 Anthropic 协议，Codex CLI 使用 OpenAI 协议，Gemini CLI 使用 Google 协议——三套协议完全不同，必须各自配置。
+Claude Code 使用 Anthropic 协议，Codex CLI 使用 OpenAI 协议，Gemini CLI 使用 Google 协议——三套协议完全不同，必须各自配置：
 
 ```json
 {
   "providers": {
     "myprovider": {
-      "claude": {
-        "base_url": "https://api.example.com/anthropic",
-        "token": "$MY_CLAUDE_TOKEN"
-      },
-      "codex": {
-        "base_url": "https://api.example.com/openai/v1",
-        "token": "$MY_OPENAI_KEY"
-      },
-      "gemini": {
-        "api_key": "$MY_GEMINI_KEY",
-        "auth_type": "api-key"
-      }
+      "claude": { "base_url": "https://api.example.com/anthropic", "token": "$MY_CLAUDE_TOKEN" },
+      "codex":  { "base_url": "https://api.example.com/openai/v1", "token": "$MY_OPENAI_KEY" },
+      "gemini": { "api_key": "$MY_GEMINI_KEY", "auth_type": "api-key" }
     }
   }
 }
 ```
 
-`ccsw claude myprovider` 只使用 `claude` 块；`ccsw codex myprovider` 只使用 `codex` 块，互不干扰。
+**Provider 可以只支持 1-2 个工具。** 不支持的工具设置为 `null`，切换时自动跳过：
 
----
-
-## 部分工具支持
-
-**Provider 可以只支持 1-2 个工具。** 不支持的工具设置为 `null`，切换时会自动跳过，**不会修改对应工具的配置，也不会更新该工具的 active 状态**。
-
-```json
-{
-  "providers": {
-    "claude-only": {
-      "claude": { "base_url": "https://api.example.com/anthropic", "token": "$MY_TOKEN" },
-      "codex": null,
-      "gemini": null
-    }
-  }
-}
 ```
-
-运行 `ccsw all claude-only` 时的输出：
-```
+ccsw all claude-only 输出：
 [claude] Updated ~/.claude/settings.json
-[codex] Skipped: provider 'claude-only' has no codex config.
+[codex]  Skipped: provider 'claude-only' has no codex config.
 [gemini] Skipped: provider 'claude-only' has no gemini config.
 ```
 
-> [!NOTE]
-> `ccsw show` 中 codex 和 gemini 的 active 状态不会被改变。只有写入成功才更新 active，保证 active 状态与实际写入文件完全同步。
-
----
-
-## Gemini 环境变量激活
-
-`GEMINI_API_KEY` 是环境变量，子进程无法直接写入父 shell。`gcsw` 和 `ccsw gemini/all` 在 shell 函数层面已内置 `eval`，所以用户直接运行即可，无需手动 `eval "$(...)"` 。
+**Gemini 环境变量激活**：`GEMINI_API_KEY` 是环境变量，子进程无法直接写入父 shell。`gcsw` 和 `ccsw gemini/all` 的 shell 函数已内置 `eval`，直接运行即可：
 
 ```bash
-# 切换 Gemini（环境变量自动激活）
-gcsw myprovider
-
-# 切换全部工具（GEMINI_API_KEY 和 OPENAI 变量一并激活）
-ccsw all 88code
+gcsw myprovider          # 切换 Gemini（环境变量自动激活）
+ccsw all 88code          # 切换全部工具（GEMINI_API_KEY 和 OPENAI 变量一并激活）
 ```
 
-### 在 CI/CD 或 Docker 中直接调用 Python 脚本时
-
-shell 函数不可用时，仍需手动 `eval`：
+**在 CI/CD 或 Docker 中直接调用 Python 脚本时**，shell 函数不可用，需手动 `eval`：
 
 ```bash
 eval "$(python3 ccsw.py gemini myprovider)"
 eval "$(python3 ccsw.py all 88code)"
 ```
 
-### active.env 持久化
+每次成功切换 Gemini provider 时，ccsw 会将 export 语句写入 `~/.ccswitch/active.env`，新开 shell 自动 source，无需重新运行 ccsw。
 
-每次成功切换 Gemini provider 时，ccsw 会将 export 语句写入 `~/.ccswitch/active.env`。新开 shell 时会自动 source 此文件，无需重新运行 ccsw。
-
----
-
-## 内置 Provider
-
-| Provider    | Claude Code | Codex CLI | Gemini CLI | 别名 |
-|-------------|:-----------:|:---------:|:----------:|------|
-| `88code`    | ✅ | ✅ | ❌ | `88` |
-| `zhipu`     | ✅ | ❌ | ❌ | `glm` |
-| `rightcode` | ❌ | ✅ | ❌ | `rc` |
-
-Token 通过环境变量引用（切换时从当前 shell 动态读取，或从 `.env.local` 加载）：
-
-| Provider | 工具 | 环境变量 |
-|----------|------|---------|
-| `88code` | Claude Code | `$CODE88_ANTHROPIC_AUTH_TOKEN` |
-| `88code` | Codex CLI | `$CODE88_OPENAI_API_KEY` |
-| `zhipu` | Claude Code | `$ZHIPU_ANTHROPIC_AUTH_TOKEN` |
-| `rightcode` | Codex CLI | `$RIGHTCODE_API_KEY` |
+</details>
 
 ---
 
-## 添加 Provider
+## 提供商管理
 
-### 交互式（无参数）
+<details>
+<summary><b>内置 Provider</b></summary>
+
+| Provider | Claude Code | Codex CLI | Gemini CLI | 别名 | Token 环境变量 |
+|----------|:-----------:|:---------:|:----------:|------|----------------|
+| `88code` | ✅ | ✅ | ❌ | `88` | `$CODE88_ANTHROPIC_AUTH_TOKEN` / `$CODE88_OPENAI_API_KEY` |
+| `zhipu` | ✅ | ❌ | ❌ | `glm` | `$ZHIPU_ANTHROPIC_AUTH_TOKEN` |
+| `rightcode` | ❌ | ✅ | ❌ | `rc` | `$RIGHTCODE_API_KEY` |
+
+Token 通过环境变量引用，切换时从当前 shell 动态读取，或从 `.env.local` 加载。
+
+</details>
+
+<details>
+<summary><b>常见服务商配置参考</b></summary>
+
+以下是社区常用的第三方服务商及其典型配置。获取 API Key 后，用 `ccsw add` 即可添加：
+
+**OpenRouter**（国际，推荐）
+```bash
+ccsw add openrouter \
+  --claude-url   https://openrouter.ai/api \
+  --claude-token '$OPENROUTER_API_KEY' \
+  --codex-url    https://openrouter.ai/api/v1 \
+  --codex-token  '$OPENROUTER_API_KEY'
+```
+
+**AiHubMix**（国际）
+```bash
+ccsw add aihubmix \
+  --claude-url   https://aihubmix.com/v1 \
+  --claude-token '$AIHUBMIX_API_KEY' \
+  --codex-url    https://aihubmix.com/v1 \
+  --codex-token  '$AIHUBMIX_API_KEY'
+```
+
+**88code**（中国市场）
+```bash
+# 已内置，直接使用即可：ccsw 88code
+# 手动添加方式：
+ccsw add 88code \
+  --claude-url   https://www.88code.ai/api \
+  --claude-token '$CODE88_ANTHROPIC_AUTH_TOKEN' \
+  --codex-url    https://www.88code.ai/openai/v1 \
+  --codex-token  '$CODE88_OPENAI_API_KEY'
+```
+
+**One API / New API**（自建）
+```bash
+ccsw add my-oneapi \
+  --claude-url   https://your-oneapi-domain.com/anthropic \
+  --claude-token '$ONEAPI_API_KEY' \
+  --codex-url    https://your-oneapi-domain.com/v1 \
+  --codex-token  '$ONEAPI_API_KEY'
+```
+
+> 各服务商的具体 URL 以其官方文档为准。URL 路径因服务商而异，常见模式：
+> - Anthropic 协议：`/api`、`/v1`、`/api/anthropic`
+> - OpenAI 协议：`/v1`、`/openai/v1`
+
+</details>
+
+<details>
+<summary><b>添加自定义 Provider</b></summary>
+
+**交互式（推荐）：**
 
 ```bash
 ccsw add myprovider
@@ -319,7 +268,7 @@ ccsw add myprovider
 
 按提示逐步输入，留空则跳过该工具。使用 `$ENV_VAR` 语法引用 token。
 
-### 命令行参数
+**命令行参数：**
 
 ```bash
 ccsw add myprovider \
@@ -330,33 +279,47 @@ ccsw add myprovider \
   --gemini-key   '$MY_GEMINI_KEY'
 ```
 
-Token 以 `$` 开头时，切换时从环境变量动态读取；否则作为字面量存储。
-
-### 只更新部分字段
+**只更新部分字段：**
 
 ```bash
-# 只更新 Gemini key，保留原有 auth_type
-ccsw add myprovider --gemini-key '$NEW_KEY'
+ccsw add myprovider --gemini-key '$NEW_KEY'   # 只更新 Gemini key，保留其他配置
 ```
+
+</details>
 
 ---
 
-## 管理命令
-
-```bash
-ccsw list                         # 列出所有 Provider 及激活状态
-ccsw show                         # 显示各工具当前激活的详细配置
-ccsw add <name> [flags]           # 新增/更新 Provider
-ccsw remove <name>                # 删除 Provider
-ccsw alias <alias> <provider>     # 添加别名
-```
-
----
-
-## 配置文件格式
+## 架构与原理
 
 <details>
-<summary><b>展开查看完整 providers.json 结构</b></summary>
+<summary><b>工作流程与配置写入</b></summary>
+
+```mermaid
+flowchart LR
+    L([".env.local"]) -. "自动加载" .-> P
+    U(["ccsw openrouter"]) --> P["ccsw.py"]
+    P -- "读取" --> DB[("~/.ccswitch\nproviders.json")]
+    P -- "解析 $TOKEN" --> E{{"env vars"}}
+    E -- "写入 + 备份" --> C["~/.claude/settings.json\nAnthropic 协议"]
+    E -- "写入 + 备份" --> X["~/.codex/auth.json\nOpenAI 协议"]
+    E -- "写入 + stdout export" --> G["~/.gemini/settings.json\nGoogle 协议"]
+```
+
+> [!NOTE]
+> **stdout / stderr 分离**：`ccsw` 所有状态信息写入 stderr（终端可见），Gemini `export GEMINI_API_KEY=...` 写入 stdout（被 `eval` 捕获执行）。
+
+| 工具 | 配置文件 | 写入字段 |
+|------|----------|----------|
+| Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, extra_env |
+| Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
+| Codex 环境变量 | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
+| Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
+| Gemini 环境变量 | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
+
+</details>
+
+<details>
+<summary><b>providers.json 结构</b></summary>
 
 位于 `~/.ccswitch/providers.json`：
 
@@ -389,59 +352,56 @@ ccsw alias <alias> <provider>     # 添加别名
 
 </details>
 
----
+<details>
+<summary><b>使用场景：SSH / Docker / CI-CD</b></summary>
 
-## 配置写入位置
-
-| 工具 | 配置文件 | 写入字段 |
-|------|----------|----------|
-| Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, extra_env |
-| Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
-| Codex 环境变量 | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
-| Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
-| Gemini 环境变量 | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
-
----
-
-## 使用场景
-
-### SSH 远程服务器
+**SSH 远程服务器**
 
 ```bash
 ssh user@server
 # 进入远程 shell 后：
-eval "$(ccsw all 88code)"
+eval "$(ccsw all openrouter)"
 ```
 
-### Docker 容器
+**Docker 容器**
 
 ```dockerfile
 COPY ccsw.py /usr/local/bin/ccsw.py
 RUN chmod +x /usr/local/bin/ccsw.py
-ENV CODE88_ANTHROPIC_AUTH_TOKEN=your_token_here
+ENV OPENROUTER_API_KEY=your_token_here
 ```
 
 ```bash
 docker exec -it mycontainer bash -c \
-  'eval "$(python3 /usr/local/bin/ccsw.py all 88code)"'
+  'eval "$(python3 /usr/local/bin/ccsw.py all openrouter)"'
 ```
 
-### CI/CD 流水线
+**CI/CD 流水线（GitHub Actions）**
 
 ```yaml
-# GitHub Actions
-- name: Switch to 88code provider
+- name: Configure AI tool providers
   env:
-    CODE88_ANTHROPIC_AUTH_TOKEN: ${{ secrets.CODE88_TOKEN }}
-    CODE88_OPENAI_API_KEY: ${{ secrets.CODE88_OPENAI_KEY }}
+    OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   run: |
-    python ccsw.py claude 88code
-    python ccsw.py codex 88code
+    python ccsw.py claude openrouter
+    python ccsw.py codex openrouter
 ```
+
+</details>
 
 ---
 
 ## FAQ
+
+<details>
+<summary><b>Q: 运行 gcsw 后 $GEMINI_API_KEY 还是空的？</b></summary>
+
+检查：
+1. 是否通过 bootstrap.sh 安装了 shell 函数？运行 `type gcsw` 确认
+2. 是否在同一个 shell session 中执行（子 shell 不继承父 shell 的变量）
+3. 若绕过 shell 函数直接调用 Python 脚本，仍需手动 `eval "$(python3 ccsw.py gemini ...)"`
+
+</details>
 
 <details>
 <summary><b>Q: <code>[claude] Skipped: token unresolved</code> 是什么意思？</b></summary>
@@ -455,70 +415,18 @@ Token 配置为 `$MY_ENV_VAR`，但该环境变量当前未设置。
 </details>
 
 <details>
-<summary><b>Q: .env.local 和 ~/.zshrc 中的 export 有什么区别？</b></summary>
-
-`.env.local` 的 token 只在 `ccsw` 运行时加载，不会污染全局 shell 环境；写入 `~/.zshrc` 的 `export` 在每个新 shell 中都存在。对于 AI 工具 token，推荐 `.env.local`：更安全，不会被意外打印到终端。
-
-</details>
-
-<details>
-<summary><b>Q: 对话中切换 provider，Claude Code 能立即感知吗？</b></summary>
-
-可以。Claude Code 在每次 API 请求前都会重新读取 `~/.claude/settings.json` 中的 `env` 块。在另一个终端运行 `ccsw claude <provider>`，回到正在使用的 Claude Code 发下一条消息即生效，**无需重启**。
-
-</details>
-
-<details>
-<summary><b>Q: 运行 gcsw 后 $GEMINI_API_KEY 还是空的？</b></summary>
-
-检查：
-1. 是否通过 bootstrap.sh 安装了 shell 函数？直接运行 `type gcsw` 确认
-2. 是否在同一个 shell session 中执行（子 shell 不继承）
-3. 若绕过 shell 函数直接调用 Python 脚本，仍需手动 `eval "$(python3 ccsw.py gemini ...)"`
-
-</details>
-
-<details>
-<summary><b>Q: provider 只支持部分工具，ccsw all 会报错吗？</b></summary>
-
-不会。将不支持的工具设为 `null`，ccsw 会打印 `Skipped` 提示并继续，不影响其他工具的切换，也不更新被跳过工具的 active 状态。
-
-</details>
-
-<details>
-<summary><b>Q: 如何查看切换后实际生效的配置？</b></summary>
-
-```bash
-ccsw show                       # active provider 及 URL/token 引用
-cat ~/.claude/settings.json     # 实际写入的 Claude 配置
-cat ~/.codex/auth.json          # 实际写入的 Codex 配置
-```
-
-</details>
-
-<details>
 <summary><b>Q: 我的 ~/.claude/settings.json 被覆盖了怎么办？</b></summary>
 
 每次写入前 ccsw 会创建时间戳备份，例如 `settings.json.bak-20260313-120000`，直接 `cp` 回去即可。
 
 </details>
 
----
+<details>
+<summary><b>Q: .env.local 和 ~/.zshrc 中的 export 有什么区别？</b></summary>
 
-## 给 AI 工具的安装提示词
+`.env.local` 的 token 只在 `ccsw` 运行时加载，不会污染全局 shell 环境；写入 `~/.zshrc` 的 `export` 在每个新 shell 中都存在。对于 AI 工具 token，推荐 `.env.local`：更安全，不会被意外打印到终端。
 
-如果你在使用 Claude Code 或其他 AI 工具，可以发送以下提示词让 AI 帮你完成安装：
-
-```
-请帮我安装 ccsw provider 切换工具：
-1. 将仓库克隆到 ~/ccsw（如已存在则跳过）
-2. 运行 bash ~/ccsw/bootstrap.sh
-3. source ~/.zshrc（或 ~/.bashrc）
-4. 在 ~/ccsw/.env.local 中写入我的 token 环境变量
-5. 在 ~/.ccswitch/providers.json 中添加我的 provider 配置
-6. 运行 ccsw list 确认安装，ccsw show 确认当前状态
-注意：providers.json 中的 token 请使用 $ENV_VAR 格式引用。
-```
+</details>
 
 ---
 
