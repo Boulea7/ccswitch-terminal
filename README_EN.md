@@ -18,7 +18,7 @@
 
 Using Claude Code, Codex CLI, and Gemini CLI simultaneously? Tired of manually editing multiple config files and remembering different token field formats every time you switch API providers? **ccswitch** solves exactly this.
 
-- **One-click switching**: `ccsw 88code` switches Claude; `ccsw all 88code` syncs all three tools at once
+- **One-click switching**: `ccsw myprovider` switches Claude; `ccsw all myprovider` syncs all three tools at once
 - **Config isolation**: each provider maintains independent URLs and tokens for all three protocols (Anthropic / OpenAI / Google)
 - **Security first**: tokens are stored as `$ENV_VAR` references — secrets never enter config files; automatic backup before every write
 - **Seamless integration**: live switching in active Claude Code sessions; Gemini env vars auto-activated; no restarts needed
@@ -38,17 +38,17 @@ Setup: clone to ~/ccsw → run bootstrap.sh → source ~/.zshrc
 Then configure a provider for me:
   Name: <provider-name>    Alias: <short-name>
   Claude URL:   <https://api.example.com/anthropic>
-  Claude Token: <sk-ant-xxxx>
+  Claude Token: <your-claude-token>
   Codex URL:    <https://api.example.com/openai/v1>
-  Codex Token:  <sk-xxxx>
-  Gemini Key:   <gm-xxxx or leave blank to skip>
+  Codex Token:  <your-codex-token>
+  Gemini Key:   <your-gemini-key or leave blank to skip>
 
 Write tokens in plaintext to ~/ccsw/.env.local, reference them as $ENV_VAR in providers.json.
 Finally run ccsw list and ccsw show to confirm.
 ```
 
 <details>
-<summary>Example: pre-filled version using OpenRouter</summary>
+<summary>Example: pre-filled version using a custom provider</summary>
 
 ```
 Please install ccswitch (AI terminal tool API switcher):
@@ -57,11 +57,11 @@ Repo: https://github.com/Boulea7/ccswitch--terminal
 Setup: clone to ~/ccsw → run bootstrap.sh → source ~/.zshrc
 
 Then configure a provider for me:
-  Name: openrouter    Alias: or
-  Claude URL:   https://openrouter.ai/api
-  Claude Token: sk-or-v1-xxxx
-  Codex URL:    https://openrouter.ai/api/v1
-  Codex Token:  sk-or-v1-xxxx
+  Name: myprovider    Alias: mp
+  Claude URL:   https://api.example.com/anthropic
+  Claude Token: <your-claude-token>
+  Codex URL:    https://api.example.com/openai/v1
+  Codex Token:  <your-codex-token>
   Gemini Key:   leave blank to skip
 
 Write tokens in plaintext to ~/ccsw/.env.local, reference them as $ENV_VAR in providers.json.
@@ -86,10 +86,10 @@ After `bootstrap.sh`, four shell functions are registered (`ccsw`, `cxsw`, `gcsw
 
 ```bash
 # -- switch --
-ccsw openrouter                   # Switch Claude (tool name optional)
-cxsw openrouter                   # Switch Codex (auto-activates OPENAI env vars)
+ccsw myprovider                   # Switch Claude (tool name optional)
+cxsw myprovider                   # Switch Codex (auto-activates OPENAI env vars)
 gcsw myprovider                   # Switch Gemini (auto-activates GEMINI_API_KEY)
-ccsw all openrouter               # Switch all three tools at once
+ccsw all myprovider               # Switch all three tools at once
 
 # -- manage --
 ccsw list                         # List all providers
@@ -110,10 +110,9 @@ Create a `.env.local` file in the same directory as `ccsw.py` to store tokens lo
 
 ```bash
 # ~/ccsw/.env.local  (excluded from git)
-OPENROUTER_API_KEY=sk-or-v1-xxxx
-AIHUBMIX_API_KEY=sk-xxxx
-CODE88_ANTHROPIC_AUTH_TOKEN=sk-ant-xxxx
-CODE88_OPENAI_API_KEY=sk-xxxx
+MY_PROVIDER_CLAUDE_TOKEN=<your-claude-token>
+MY_PROVIDER_CODEX_TOKEN=<your-codex-token>
+MY_PROVIDER_GEMINI_KEY=<your-gemini-key>
 ```
 
 ccsw loads this file automatically at startup. It only sets variables not already present in the environment (existing shell exports take precedence).
@@ -134,9 +133,9 @@ Claude Code re-reads the `env` block of `~/.claude/settings.json` **before every
 # Terminal A: Claude Code session is running
 
 # Terminal B: switch provider
-ccsw claude openrouter
+ccsw claude myprovider
 
-# Back in Terminal A: send the next message — it uses openrouter provider
+# Back in Terminal A: send the next message — it uses myprovider
 ```
 
 > [!NOTE]
@@ -156,9 +155,9 @@ Claude Code uses the Anthropic protocol, Codex CLI uses the OpenAI protocol, and
 {
   "providers": {
     "myprovider": {
-      "claude": { "base_url": "https://api.example.com/anthropic", "token": "$MY_CLAUDE_TOKEN" },
-      "codex":  { "base_url": "https://api.example.com/openai/v1", "token": "$MY_OPENAI_KEY" },
-      "gemini": { "api_key": "$MY_GEMINI_KEY", "auth_type": "api-key" }
+      "claude": { "base_url": "https://api.example.com/anthropic", "token": "$MY_PROVIDER_CLAUDE_TOKEN" },
+      "codex":  { "base_url": "https://api.example.com/openai/v1", "token": "$MY_PROVIDER_CODEX_TOKEN" },
+      "gemini": { "api_key": "$MY_PROVIDER_GEMINI_KEY", "auth_type": "api-key" }
     }
   }
 }
@@ -177,14 +176,14 @@ ccsw all claude-only output:
 
 ```bash
 gcsw myprovider          # Switch Gemini (env var activated automatically)
-ccsw all 88code          # Switch all tools (GEMINI_API_KEY and OPENAI vars all activated)
+ccsw all myprovider      # Switch all tools (GEMINI_API_KEY and OPENAI vars all activated)
 ```
 
 **When calling the Python script directly (CI/CD or Docker)**, `eval` is still required:
 
 ```bash
 eval "$(python3 ccsw.py gemini myprovider)"
-eval "$(python3 ccsw.py all 88code)"
+eval "$(python3 ccsw.py all myprovider)"
 ```
 
 Every successful Gemini switch writes the export statement to `~/.ccswitch/active.env`. New shell sessions source this file automatically — no need to re-run ccsw.
@@ -198,68 +197,38 @@ Every successful Gemini switch writes the export statement to `~/.ccswitch/activ
 <details>
 <summary><b>Built-in Providers</b></summary>
 
-| Provider | Claude Code | Codex CLI | Gemini CLI | Alias | Token Env Vars |
-|----------|:-----------:|:---------:|:----------:|-------|----------------|
-| `88code` | ✅ | ✅ | ❌ | `88` | `$CODE88_ANTHROPIC_AUTH_TOKEN` / `$CODE88_OPENAI_API_KEY` |
-| `zhipu` | ✅ | ❌ | ❌ | `glm` | `$ZHIPU_ANTHROPIC_AUTH_TOKEN` |
-| `rightcode` | ❌ | ✅ | ❌ | `rc` | `$RIGHTCODE_API_KEY` |
-| `anyrouter` | ✅ | ❌ | ❌ | `any` | `$ANYROUTER_ANTHROPIC_AUTH_TOKEN` |
+| Provider | Claude Code | Codex CLI | Gemini CLI | Alias | Credential Source |
+|----------|:-----------:|:---------:|:----------:|-------|-------------------|
+| `88code` | ✅ | ✅ | ❌ | `88` | Environment variables or `.env.local` |
+| `zhipu` | ✅ | ❌ | ❌ | `glm` | Environment variables or `.env.local` |
+| `rightcode` | ❌ | ✅ | ❌ | `rc` | Environment variables or `.env.local` |
+| `anyrouter` | ✅ | ❌ | ❌ | `any` | Environment variables or `.env.local` |
 
-Tokens are resolved from the current shell at switch time, or loaded from `.env.local`.
+Built-in providers use environment-backed secret references by default. If you want your own naming convention, re-save the same provider name with `ccsw add <name>`.
 
 </details>
 
 <details>
-<summary><b>Common Provider Reference</b></summary>
+<summary><b>Configuration Template</b></summary>
 
-Popular third-party providers and their typical configurations. Once you have an API key, add them with `ccsw add`:
+Start from a generic template, then replace the URLs and env var names according to your provider's docs:
 
-**OpenRouter** (international, recommended)
 ```bash
-ccsw add openrouter \
-  --claude-url   https://openrouter.ai/api \
-  --claude-token '$OPENROUTER_API_KEY' \
-  --codex-url    https://openrouter.ai/api/v1 \
-  --codex-token  '$OPENROUTER_API_KEY'
+ccsw add myprovider \
+  --claude-url   https://api.example.com/anthropic \
+  --claude-token '$MY_PROVIDER_CLAUDE_TOKEN' \
+  --codex-url    https://api.example.com/openai/v1 \
+  --codex-token  '$MY_PROVIDER_CODEX_TOKEN' \
+  --gemini-key   '$MY_PROVIDER_GEMINI_KEY'
 ```
 
-**AiHubMix** (international)
-```bash
-ccsw add aihubmix \
-  --claude-url   https://aihubmix.com/v1 \
-  --claude-token '$AIHUBMIX_API_KEY' \
-  --codex-url    https://aihubmix.com/v1 \
-  --codex-token  '$AIHUBMIX_API_KEY'
-```
+If you prefer ready-made shortcuts, you can use the built-ins directly:
 
-**88code** (China market)
 ```bash
-# Already built-in — just run: ccsw 88code
-# To add manually:
-ccsw add 88code \
-  --claude-url   https://www.88code.ai/api \
-  --claude-token '$CODE88_ANTHROPIC_AUTH_TOKEN' \
-  --codex-url    https://www.88code.ai/openai/v1 \
-  --codex-token  '$CODE88_OPENAI_API_KEY'
-```
-
-**One API / New API** (self-hosted)
-```bash
-ccsw add my-oneapi \
-  --claude-url   https://your-oneapi-domain.com/anthropic \
-  --claude-token '$ONEAPI_API_KEY' \
-  --codex-url    https://your-oneapi-domain.com/v1 \
-  --codex-token  '$ONEAPI_API_KEY'
-```
-
-**AnyRouter** (Claude Code relay)
-```bash
-# Already built-in — just run: ccsw any
-# To add manually:
-ccsw add anyrouter \
-  --claude-url   https://anyrouter.top \
-  --claude-token '$ANYROUTER_ANTHROPIC_AUTH_TOKEN'
-ccsw alias any anyrouter
+ccsw 88code
+ccsw glm
+cxsw rc
+ccsw any
 ```
 
 > Exact URLs vary by provider — always check their official documentation. Common patterns:
@@ -284,10 +253,10 @@ Follow the prompts for each tool. Leave blank to skip. Use `$ENV_VAR` syntax for
 ```bash
 ccsw add myprovider \
   --claude-url   https://api.example.com/anthropic \
-  --claude-token '$MY_CLAUDE_TOKEN' \
+  --claude-token '$MY_PROVIDER_CLAUDE_TOKEN' \
   --codex-url    https://api.example.com/openai/v1 \
-  --codex-token  '$MY_OPENAI_KEY' \
-  --gemini-key   '$MY_GEMINI_KEY'
+  --codex-token  '$MY_PROVIDER_CODEX_TOKEN' \
+  --gemini-key   '$MY_PROVIDER_GEMINI_KEY'
 ```
 
 **Update a single field:**
@@ -308,7 +277,7 @@ ccsw add myprovider --gemini-key '$NEW_KEY'   # Update only the Gemini key
 ```mermaid
 flowchart LR
     L([".env.local"]) -. "auto-load" .-> P
-    U(["ccsw openrouter"]) --> P["ccsw.py"]
+    U(["ccsw myprovider"]) --> P["ccsw.py"]
     P -- "reads" --> DB[("~/.ccswitch\nproviders.json")]
     P -- "resolves $TOKEN" --> E{{"env vars"}}
     E -- "write + backup" --> C["~/.claude/settings.json\nAnthropic protocol"]
@@ -337,23 +306,26 @@ Located at `~/.ccswitch/providers.json`:
 ```json
 {
   "version": 1,
-  "active": { "claude": "88code", "codex": "88code", "gemini": null },
-  "aliases": { "88": "88code", "glm": "zhipu", "rc": "rightcode" },
+  "active": { "claude": "myprovider", "codex": "myprovider", "gemini": null },
+  "aliases": { "mp": "myprovider" },
   "providers": {
-    "88code": {
+    "myprovider": {
       "claude": {
-        "base_url": "https://www.88code.ai/api",
-        "token": "$CODE88_ANTHROPIC_AUTH_TOKEN",
+        "base_url": "https://api.example.com/anthropic",
+        "token": "$MY_PROVIDER_CLAUDE_TOKEN",
         "extra_env": {
           "API_TIMEOUT_MS": null,
           "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": null
         }
       },
       "codex": {
-        "base_url": "https://www.88code.ai/openai/v1",
-        "token": "$CODE88_OPENAI_API_KEY"
+        "base_url": "https://api.example.com/openai/v1",
+        "token": "$MY_PROVIDER_CODEX_TOKEN"
       },
-      "gemini": null
+      "gemini": {
+        "api_key": "$MY_PROVIDER_GEMINI_KEY",
+        "auth_type": "api-key"
+      }
     }
   }
 }
@@ -371,7 +343,7 @@ Located at `~/.ccswitch/providers.json`:
 ```bash
 ssh user@server
 # Once in the remote shell:
-eval "$(ccsw all openrouter)"
+eval "$(ccsw all myprovider)"
 ```
 
 **Docker Container**
@@ -379,12 +351,13 @@ eval "$(ccsw all openrouter)"
 ```dockerfile
 COPY ccsw.py /usr/local/bin/ccsw.py
 RUN chmod +x /usr/local/bin/ccsw.py
-ENV OPENROUTER_API_KEY=your_token_here
+ENV MY_PROVIDER_CODEX_TOKEN=<your-codex-token>
+ENV MY_PROVIDER_CLAUDE_TOKEN=<your-claude-token>
 ```
 
 ```bash
 docker exec -it mycontainer bash -c \
-  'eval "$(python3 /usr/local/bin/ccsw.py all openrouter)"'
+  'python3 /usr/local/bin/ccsw.py claude myprovider && eval "$(python3 /usr/local/bin/ccsw.py codex myprovider)"'
 ```
 
 **CI/CD Pipeline (GitHub Actions)**
@@ -392,10 +365,11 @@ docker exec -it mycontainer bash -c \
 ```yaml
 - name: Configure AI tool providers
   env:
-    OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    MY_PROVIDER_CLAUDE_TOKEN: ${{ secrets.MY_PROVIDER_CLAUDE_TOKEN }}
+    MY_PROVIDER_CODEX_TOKEN: ${{ secrets.MY_PROVIDER_CODEX_TOKEN }}
   run: |
-    python ccsw.py claude openrouter
-    python ccsw.py codex openrouter
+    python ccsw.py claude myprovider
+    python ccsw.py codex myprovider
 ```
 
 </details>

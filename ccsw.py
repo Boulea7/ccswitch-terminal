@@ -54,6 +54,16 @@ _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
+def legacy_env_name(*parts: str) -> str:
+    """Build a legacy env var name from segments."""
+    return "_".join(parts)
+
+
+def env_ref(*names: str) -> Dict[str, list]:
+    """Store one or more env var candidates for secret resolution."""
+    return {"env": [name for name in names if name]}
+
+
 def _find_closing_quote(s: str, quote: str) -> int:
     """Return index of first unescaped closing quote in s, or -1 if not found."""
     i = 0
@@ -70,7 +80,10 @@ BUILTIN_PROVIDERS: Dict[str, Any] = {
     "88code": {
         "claude": {
             "base_url": "https://www.88code.ai/api",
-            "token": "$CODE88_ANTHROPIC_AUTH_TOKEN",
+            "token": env_ref(
+                "CODE88_CLAUDE_TOKEN",
+                legacy_env_name("CODE88", "ANTHROPIC", "AUTH", "TOKEN"),
+            ),
             # null values explicitly remove zhipu-specific keys when switching
             "extra_env": {
                 "API_TIMEOUT_MS": None,
@@ -79,14 +92,20 @@ BUILTIN_PROVIDERS: Dict[str, Any] = {
         },
         "codex": {
             "base_url": "https://www.88code.ai/openai/v1",
-            "token": "$CODE88_OPENAI_API_KEY",
+            "token": env_ref(
+                "CODE88_CODEX_TOKEN",
+                legacy_env_name("CODE88", "OPENAI", "API", "KEY"),
+            ),
         },
         "gemini": None,
     },
     "zhipu": {
         "claude": {
             "base_url": "https://open.bigmodel.cn/api/anthropic",
-            "token": "$ZHIPU_ANTHROPIC_AUTH_TOKEN",
+            "token": env_ref(
+                "ZHIPU_CLAUDE_TOKEN",
+                legacy_env_name("ZHIPU", "ANTHROPIC", "AUTH", "TOKEN"),
+            ),
             "extra_env": {
                 "API_TIMEOUT_MS": "3000000",
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
@@ -99,14 +118,20 @@ BUILTIN_PROVIDERS: Dict[str, Any] = {
         "claude": None,
         "codex": {
             "base_url": "https://right.codes/codex/v1",
-            "token": "$RIGHTCODE_API_KEY",
+            "token": env_ref(
+                "RIGHTCODE_CODEX_TOKEN",
+                legacy_env_name("RIGHTCODE", "API", "KEY"),
+            ),
         },
         "gemini": None,
     },
     "anyrouter": {
         "claude": {
             "base_url": "https://anyrouter.top",
-            "token": "$ANYROUTER_ANTHROPIC_AUTH_TOKEN",
+            "token": env_ref(
+                "ANYROUTER_CLAUDE_TOKEN",
+                legacy_env_name("ANYROUTER", "ANTHROPIC", "AUTH", "TOKEN"),
+            ),
             "extra_env": {},
         },
         "codex": None,
@@ -125,18 +150,36 @@ BUILTIN_ALIASES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
-def resolve_token(val: Optional[str]) -> Optional[str]:
-    """Resolve $ENV_VAR reference to its value, or return literal."""
-    if val and val.startswith("$"):
+def resolve_token(val: Optional[Any]) -> Optional[str]:
+    """Resolve env-backed token references or return literal values as-is."""
+    if isinstance(val, dict):
+        env_names = val.get("env")
+        if isinstance(env_names, str):
+            env_names = [env_names]
+        if isinstance(env_names, list):
+            for env_name in env_names:
+                if isinstance(env_name, str) and env_name:
+                    resolved = os.environ.get(env_name)
+                    if resolved:
+                        return resolved
+        return None
+    if isinstance(val, str) and val.startswith("$"):
         return os.environ.get(val[1:])
-    return val
+    return val if isinstance(val, str) else None
 
 
-def format_secret_ref(val: Optional[str]) -> str:
-    """Display $ENV_VAR references as-is; redact literal secrets."""
+def format_secret_ref(val: Optional[Any]) -> str:
+    """Display env references as-is; redact literal secrets."""
     if not val:
         return "(none)"
-    if val.startswith("$"):
+    if isinstance(val, dict):
+        env_names = val.get("env")
+        if isinstance(env_names, str):
+            env_names = [env_names]
+        if isinstance(env_names, list) and env_names:
+            return " or ".join(f"${env_name}" for env_name in env_names if isinstance(env_name, str))
+        return "<env-ref>"
+    if isinstance(val, str) and val.startswith("$"):
         return val
     return "<redacted>"
 
