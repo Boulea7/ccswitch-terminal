@@ -9,6 +9,8 @@ __pycache__/
 *.corrupt-*
 .venv/
 .claude/
+CLAUDE.md
+AGENTS.md
 providers.json
 active.env
 codex.env

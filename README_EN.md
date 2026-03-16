@@ -203,6 +203,7 @@ Every successful Gemini switch writes the export statement to `~/.ccswitch/activ
 | `88code` | ✅ | ✅ | ❌ | `88` | `$CODE88_ANTHROPIC_AUTH_TOKEN` / `$CODE88_OPENAI_API_KEY` |
 | `zhipu` | ✅ | ❌ | ❌ | `glm` | `$ZHIPU_ANTHROPIC_AUTH_TOKEN` |
 | `rightcode` | ❌ | ✅ | ❌ | `rc` | `$RIGHTCODE_API_KEY` |
+| `anyrouter` | ✅ | ❌ | ❌ | `any` | `$ANYROUTER_ANTHROPIC_AUTH_TOKEN` |
 
 Tokens are resolved from the current shell at switch time, or loaded from `.env.local`.
 
@@ -249,6 +250,16 @@ ccsw add my-oneapi \
   --claude-token '$ONEAPI_API_KEY' \
   --codex-url    https://your-oneapi-domain.com/v1 \
   --codex-token  '$ONEAPI_API_KEY'
+```
+
+**AnyRouter** (Claude Code relay)
+```bash
+# Already built-in — just run: ccsw any
+# To add manually:
+ccsw add anyrouter \
+  --claude-url   https://anyrouter.top \
+  --claude-token '$ANYROUTER_ANTHROPIC_AUTH_TOKEN'
+ccsw alias any anyrouter
 ```
 
 > Exact URLs vary by provider — always check their official documentation. Common patterns:

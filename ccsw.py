@@ -50,6 +50,8 @@ BACKUP_SUFFIX_FMT = "%Y%m%d-%H%M%S"
 
 # Valid shell variable name (used to validate keys in .env.local)
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Valid provider/alias name: letters, digits, underscore, dot, hyphen only
+_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _find_closing_quote(s: str, quote: str) -> int:
@@ -101,12 +103,22 @@ BUILTIN_PROVIDERS: Dict[str, Any] = {
         },
         "gemini": None,
     },
+    "anyrouter": {
+        "claude": {
+            "base_url": "https://anyrouter.top",
+            "token": "$ANYROUTER_ANTHROPIC_AUTH_TOKEN",
+            "extra_env": {},
+        },
+        "codex": None,
+        "gemini": None,
+    },
 }
 
 BUILTIN_ALIASES: Dict[str, str] = {
     "88": "88code",
     "glm": "zhipu",
     "rc": "rightcode",
+    "any": "anyrouter",
 }
 
 
@@ -390,6 +402,9 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
 
 def cmd_alias_add(store: Dict[str, Any], alias_name: str, target: str) -> None:
     """Create an alias pointing to a provider."""
+    if not _NAME_RE.match(alias_name):
+        info(f"[error] Alias name '{alias_name}' is invalid. Use only letters, digits, _, ., -")
+        sys.exit(1)
     canonical = resolve_alias(store, target)
     if canonical not in store.get("providers", {}):
         info(f"[error] Target provider '{target}' not found. Run: ccsw list")
@@ -401,6 +416,9 @@ def cmd_alias_add(store: Dict[str, Any], alias_name: str, target: str) -> None:
 
 def cmd_add(store: Dict[str, Any], name: str, args: argparse.Namespace) -> None:
     """Add or update a provider (interactive if no flags given)."""
+    if not _NAME_RE.match(name):
+        info(f"[error] Provider name '{name}' is invalid. Use only letters, digits, _, ., -")
+        sys.exit(1)
     providers = store.setdefault("providers", {})
     conf: Dict[str, Any] = providers.get(name, {})
 
@@ -569,8 +587,12 @@ def write_gemini(conf: Dict[str, Any]) -> Optional[list]:
     data = load_json(GEMINI_SETTINGS)
     bak = backup_file(GEMINI_SETTINGS)
 
-    # Only update selectedType when we have a valid key to back it up
-    data.setdefault("security", {}).setdefault("auth", {})["selectedType"] = auth_type
+    # Guard against corrupt settings.json where security/auth are not dicts
+    if not isinstance(data.get("security"), dict):
+        data["security"] = {}
+    if not isinstance(data["security"].get("auth"), dict):
+        data["security"]["auth"] = {}
+    data["security"]["auth"]["selectedType"] = auth_type
 
     save_json(GEMINI_SETTINGS, data)
     if bak:

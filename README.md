@@ -203,6 +203,7 @@ eval "$(python3 ccsw.py all 88code)"
 | `88code` | ✅ | ✅ | ❌ | `88` | `$CODE88_ANTHROPIC_AUTH_TOKEN` / `$CODE88_OPENAI_API_KEY` |
 | `zhipu` | ✅ | ❌ | ❌ | `glm` | `$ZHIPU_ANTHROPIC_AUTH_TOKEN` |
 | `rightcode` | ❌ | ✅ | ❌ | `rc` | `$RIGHTCODE_API_KEY` |
+| `anyrouter` | ✅ | ❌ | ❌ | `any` | `$ANYROUTER_ANTHROPIC_AUTH_TOKEN` |
 
 Token 通过环境变量引用，切换时从当前 shell 动态读取，或从 `.env.local` 加载。
 
@@ -249,6 +250,16 @@ ccsw add my-oneapi \
   --claude-token '$ONEAPI_API_KEY' \
   --codex-url    https://your-oneapi-domain.com/v1 \
   --codex-token  '$ONEAPI_API_KEY'
+```
+
+**AnyRouter**（Claude Code 中转）
+```bash
+# 已内置，直接使用即可：ccsw any
+# 手动添加方式：
+ccsw add anyrouter \
+  --claude-url   https://anyrouter.top \
+  --claude-token '$ANYROUTER_ANTHROPIC_AUTH_TOKEN'
+ccsw alias any anyrouter
 ```
 
 > 各服务商的具体 URL 以其官方文档为准。URL 路径因服务商而异，常见模式：

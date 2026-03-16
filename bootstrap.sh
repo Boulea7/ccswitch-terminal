@@ -42,6 +42,24 @@ MARKER="# ccsw - smart provider switcher"
 
 if grep -qF 'gcsw() { eval' "$RC_FILE" 2>/dev/null; then
     echo "[skip] ccsw functions already up-to-date in $RC_FILE"
+    # Update _CCSW_PY if project directory changed
+    UPGRADE_RC="$RC_FILE" UPGRADE_PY="$(printf '%q' "$CCSW_PY")" python3 <<'PYEOF'
+import os, pathlib
+rc = pathlib.Path(os.environ["UPGRADE_RC"])
+new_val = os.environ["UPGRADE_PY"]
+lines = rc.read_text().splitlines(keepends=True)
+new_lines = []
+changed = False
+for line in lines:
+    if line.startswith('_CCSW_PY=') and line.rstrip('\n') != '_CCSW_PY=' + new_val:
+        new_lines.append('_CCSW_PY=' + new_val + '\n')
+        changed = True
+    else:
+        new_lines.append(line)
+if changed:
+    rc.write_text(''.join(new_lines))
+    import sys; print(f"[updated] _CCSW_PY path updated in {rc}", file=sys.stderr)
+PYEOF
 elif grep -qF '_CCSW_PY=' "$RC_FILE" 2>/dev/null; then
     # Old installation found — patch gcsw and ccsw in-place
     UPGRADE_RC="$RC_FILE" python3 <<'PYEOF'
@@ -62,9 +80,9 @@ old_branch = (
     '      python3 "$_CCSW_PY" "$@" ;;'
 )
 new_branch = (
-    '    gemini|all)\n'
+    '    codex|gemini|all)\n'
     '      eval "$(python3 "$_CCSW_PY" "$@")" ;;\n'
-    '    claude|codex|list|show|add|remove|alias)\n'
+    '    claude|list|show|add|remove|alias)\n'
     '      python3 "$_CCSW_PY" "$@" ;;'
 )
 text = text.replace(old_branch, new_branch)
@@ -88,9 +106,9 @@ else
         printf '  case "${1:-}" in\n'
         printf '    ""|--help|-h|help|-*)\n'
         printf '      python3 "$_CCSW_PY" "$@" ;;\n'
-        printf '    gemini|all)\n'
+        printf '    codex|gemini|all)\n'
         printf '      eval "$(python3 "$_CCSW_PY" "$@")" ;;\n'
-        printf '    claude|codex|list|show|add|remove|alias)\n'
+        printf '    claude|list|show|add|remove|alias)\n'
         printf '      python3 "$_CCSW_PY" "$@" ;;\n'
         printf '    *)\n'
         printf '      python3 "$_CCSW_PY" claude "$@" ;;\n'
