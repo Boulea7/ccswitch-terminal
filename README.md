@@ -78,7 +78,7 @@ bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # 或 source ~/.bashrc
 ```
 
-`bootstrap.sh` 完成后会注册 `ccsw`、`cxsw`、`gcsw`、`ccswitch` 四个 shell 函数，并配置 Gemini / Codex 环境变量开机持久化。
+`bootstrap.sh` 完成后会注册 `ccsw`、`cxsw`、`gcsw`、`ccswitch` 四个 shell 函数，并配置 Gemini 环境变量与 Codex API key 的开机持久化。
 
 ---
 
@@ -87,7 +87,7 @@ source ~/.zshrc   # 或 source ~/.bashrc
 ```bash
 # -- 切换 --
 ccsw myprovider                   # 切换 Claude（省略工具名）
-cxsw myprovider                   # 切换 Codex（自动激活环境变量）
+cxsw myprovider                   # 切换 Codex（自动激活 OPENAI_API_KEY，并清理旧 OPENAI_BASE_URL）
 gcsw myprovider                   # 切换 Gemini（自动激活环境变量）
 ccsw all myprovider               # 三端同时切换
 
@@ -172,11 +172,12 @@ ccsw all claude-only 输出：
 [gemini] Skipped: provider 'claude-only' has no gemini config.
 ```
 
-**Gemini 环境变量激活**：`GEMINI_API_KEY` 是环境变量，子进程无法直接写入父 shell。`gcsw` 和 `ccsw gemini/all` 的 shell 函数已内置 `eval`，直接运行即可：
+**Gemini / Codex 环境激活**：`GEMINI_API_KEY` 与 `OPENAI_API_KEY` 都是环境变量，子进程无法直接写入父 shell。`gcsw`、`cxsw` 和 `ccsw gemini/all` 的 shell 函数已内置 `eval`，直接运行即可：
 
 ```bash
 gcsw myprovider          # 切换 Gemini（环境变量自动激活）
-ccsw all myprovider      # 切换全部工具（GEMINI_API_KEY 和 OPENAI 变量一并激活）
+cxsw myprovider          # 切换 Codex（API key 自动激活，并清理旧 OPENAI_BASE_URL）
+ccsw all myprovider      # 切换全部工具
 ```
 
 **在 CI/CD 或 Docker 中直接调用 Python 脚本时**，shell 函数不可用，需手动 `eval`：
@@ -281,18 +282,20 @@ flowchart LR
     P -- "读取" --> DB[("~/.ccswitch\nproviders.json")]
     P -- "解析 $TOKEN" --> E{{"env vars"}}
     E -- "写入 + 备份" --> C["~/.claude/settings.json\nAnthropic 协议"]
-    E -- "写入 + 备份" --> X["~/.codex/auth.json\nOpenAI 协议"]
+    E -- "写入 + 备份" --> X["~/.codex/auth.json\nOpenAI key"]
+    E -- "写入 + 备份" --> T["~/.codex/config.toml\nopenai_base_url"]
     E -- "写入 + stdout export" --> G["~/.gemini/settings.json\nGoogle 协议"]
 ```
 
 > [!NOTE]
-> **stdout / stderr 分离**：`ccsw` 所有状态信息写入 stderr（终端可见），Gemini `export GEMINI_API_KEY=...` 写入 stdout（被 `eval` 捕获执行）。
+> **stdout / stderr 分离**：`ccsw` 所有状态信息写入 stderr（终端可见），Codex / Gemini 的 shell 激活语句写入 stdout（被 `eval` 捕获执行）。
 
 | 工具 | 配置文件 | 写入字段 |
 |------|----------|----------|
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, extra_env |
-| Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
-| Codex 环境变量 | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
+| Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY` |
+| Codex CLI | `~/.codex/config.toml` | `openai_base_url` |
+| Codex 环境变量 | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`，并 `unset OPENAI_BASE_URL` |
 | Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
 | Gemini 环境变量 | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
 

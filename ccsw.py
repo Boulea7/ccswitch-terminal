@@ -44,6 +44,7 @@ ACTIVE_ENV_PATH = CCSWITCH_DIR / "active.env"
 CODEX_ENV_PATH = CCSWITCH_DIR / "codex.env"
 CLAUDE_SETTINGS = _HOME / ".claude" / "settings.json"
 CODEX_AUTH = _HOME / ".codex" / "auth.json"
+CODEX_CONFIG = _HOME / ".codex" / "config.toml"
 GEMINI_SETTINGS = _HOME / ".gemini" / "settings.json"
 LOCAL_ENV_PATH = Path(__file__).resolve().parent / ".env.local"
 BACKUP_SUFFIX_FMT = "%Y%m%d-%H%M%S"
@@ -52,6 +53,7 @@ BACKUP_SUFFIX_FMT = "%Y%m%d-%H%M%S"
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Valid provider/alias name: letters, digits, underscore, dot, hyphen only
 _NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_TOML_TABLE_RE = re.compile(r"^\s*(\[\[[^\[\]]+\]\]|\[[^\[\]]+\])\s*(?:#.*)?$")
 
 
 def legacy_env_name(*parts: str) -> str:
@@ -75,6 +77,68 @@ def _find_closing_quote(s: str, quote: str) -> int:
             return i
         i += 1
     return -1
+
+
+def _consume_toml_single_line_string(line: str, start: int, quote: str) -> int:
+    """Skip a TOML single-line string and return the next unread index."""
+    i = start + 1
+    while i < len(line):
+        if quote == '"' and line[i] == '\\':
+            i += 2
+            continue
+        if line[i] == quote:
+            return i + 1
+        i += 1
+    return i
+
+
+def _advance_toml_multiline_state(line: str, state: Optional[str]) -> Optional[str]:
+    """Track whether the TOML scanner is currently inside a multiline string."""
+    i = 0
+    while i < len(line):
+        if state == "basic":
+            if line.startswith('"""', i):
+                state = None
+                i += 3
+            else:
+                i += 1
+            continue
+        if state == "literal":
+            if line.startswith("'''", i):
+                state = None
+                i += 3
+            else:
+                i += 1
+            continue
+
+        if line[i] == "#":
+            break
+        if line.startswith('"""', i):
+            state = "basic"
+            i += 3
+            continue
+        if line.startswith("'''", i):
+            state = "literal"
+            i += 3
+            continue
+        if line[i] == '"':
+            i = _consume_toml_single_line_string(line, i, '"')
+            continue
+        if line[i] == "'":
+            i = _consume_toml_single_line_string(line, i, "'")
+            continue
+        i += 1
+    return state
+
+
+def _find_first_root_toml_table(lines: list[str]) -> Optional[int]:
+    """Return the first root-level TOML table index, ignoring multiline strings."""
+    multiline_state: Optional[str] = None
+    for idx, line in enumerate(lines):
+        if multiline_state is None and _TOML_TABLE_RE.match(line):
+            return idx
+        multiline_state = _advance_toml_multiline_state(line, multiline_state)
+    return None
 
 BUILTIN_PROVIDERS: Dict[str, Any] = {
     "88code": {
@@ -299,13 +363,14 @@ def emit_env(key: str, val: str) -> None:
     print(f"export {key}='{escaped}'")
 
 
-def write_shell_exports(path: Path, pairs: list) -> None:
-    """Atomically write export statements: temp file -> fsync -> os.replace."""
+def emit_unset(key: str) -> None:
+    """Emit shell unset statement to stdout for eval consumption."""
+    print(f"unset {key}")
+
+
+def save_text(path: Path, content: str) -> None:
+    """Atomically write text content: temp file -> fsync -> os.replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    content = "".join(
-        f"export {k}='{v.replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}'\n"
-        for k, v in pairs
-    )
     tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     try:
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
@@ -319,6 +384,57 @@ def write_shell_exports(path: Path, pairs: list) -> None:
         except OSError:
             pass
         raise
+
+
+def write_shell_exports(path: Path, pairs: list, unsets: Optional[list[str]] = None) -> None:
+    """Atomically write shell activation statements to a file."""
+    lines = [f"unset {key}\n" for key in (unsets or [])]
+    lines.extend(
+        f"export {k}='{v.replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}'\n"
+        for k, v in pairs
+    )
+    save_text(path, "".join(lines))
+
+
+def _toml_string(value: str) -> str:
+    """Escape a Python string as a TOML basic string literal."""
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def upsert_root_toml_string(path: Path, key: str, value: str) -> None:
+    """Set a root-level TOML string value while preserving the rest of the file."""
+    new_line = f"{key} = {_toml_string(value)}"
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = []
+
+    first_table_idx = _find_first_root_toml_table(lines)
+    search_end = first_table_idx if first_table_idx is not None else len(lines)
+
+    for idx in range(search_end):
+        stripped = lines[idx].strip()
+        if re.match(rf"^{re.escape(key)}\s*=", stripped):
+            lines[idx] = new_line
+            break
+    else:
+        insert_at = search_end
+        if insert_at == 0:
+            lines[0:0] = [new_line, ""] if lines else [new_line]
+        elif first_table_idx is None:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.append(new_line)
+        else:
+            prefix = [""] if lines[insert_at - 1].strip() else []
+            suffix = [""] if lines[insert_at].strip() else []
+            lines[insert_at:insert_at] = prefix + [new_line] + suffix
+
+    content = "\n".join(lines)
+    if content:
+        content += "\n"
+    save_text(path, content)
 
 
 # ---------------------------------------------------------------------------
@@ -590,7 +706,7 @@ def write_claude(conf: Dict[str, Any]) -> Optional[list]:
 
 
 def write_codex(conf: Dict[str, Any]) -> Optional[list]:
-    """Merge provider config into ~/.codex/auth.json. Returns env pairs on success, None on failure."""
+    """Write Codex auth.json + config.toml. Returns env pairs on success, None on failure."""
     token = resolve_token(conf.get("token"))
     base_url = conf.get("base_url")
 
@@ -602,20 +718,25 @@ def write_codex(conf: Dict[str, Any]) -> Optional[list]:
         return None
 
     data = load_json(CODEX_AUTH)
-    bak = backup_file(CODEX_AUTH)
+    auth_bak = backup_file(CODEX_AUTH)
+    config_bak = backup_file(CODEX_CONFIG)
 
     data["OPENAI_API_KEY"] = token
-    data["OPENAI_BASE_URL"] = base_url
+    data.pop("OPENAI_BASE_URL", None)
 
     save_json(CODEX_AUTH, data)
-    if bak:
-        info(f"[codex] Backed up auth.json -> {bak.name}")
+    upsert_root_toml_string(CODEX_CONFIG, "openai_base_url", base_url)
+    if auth_bak:
+        info(f"[codex] Backed up auth.json -> {auth_bak.name}")
+    if config_bak:
+        info(f"[codex] Backed up config.toml -> {config_bak.name}")
     info(f"[codex] Updated {CODEX_AUTH}")
+    info(f"[codex] Updated {CODEX_CONFIG}")
 
-    write_shell_exports(CODEX_ENV_PATH, [("OPENAI_API_KEY", token), ("OPENAI_BASE_URL", base_url)])
+    write_shell_exports(CODEX_ENV_PATH, [("OPENAI_API_KEY", token)], unsets=["OPENAI_BASE_URL"])
     info(f"[codex] codex.env updated at {CODEX_ENV_PATH}")
 
-    return [("OPENAI_API_KEY", token), ("OPENAI_BASE_URL", base_url)]
+    return [("OPENAI_API_KEY", token)]
 
 
 def write_gemini(conf: Dict[str, Any]) -> Optional[list]:
@@ -677,6 +798,8 @@ def switch_tool(store: Dict[str, Any], tool: str, provider_name: str) -> None:
         save_store(store)
         for k, v in exports:
             emit_env(k, v)
+        if tool == "codex":
+            emit_unset("OPENAI_BASE_URL")
         if tool == "gemini":
             info("[gemini] Tip: use eval \"$(ccsw gemini <provider>)\" to activate in current shell")
 

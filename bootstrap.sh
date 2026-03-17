@@ -114,7 +114,7 @@ else
         printf '      python3 "$_CCSW_PY" claude "$@" ;;\n'
         printf '  esac\n'
         printf '}\n'
-        # cxsw: codex shortcut (eval built-in, activates OPENAI env vars)
+        # cxsw: codex shortcut (eval built-in, activates OPENAI_API_KEY and clears legacy OPENAI_BASE_URL)
         printf 'cxsw() { eval "$(python3 "$_CCSW_PY" codex "$@")"; }\n'
         # gcsw: gemini shortcut (eval built-in, activates GEMINI_API_KEY)
         printf 'gcsw() { eval "$(python3 "$_CCSW_PY" gemini "$@")"; }\n'
@@ -145,7 +145,7 @@ if grep -qF "$CODEX_SOURCE_LINE" "$RC_FILE" 2>/dev/null; then
 else
     {
         echo ""
-        echo "# ccsw - load active Codex API key and base URL"
+        echo "# ccsw - load active Codex API key and clear legacy base URL env"
         echo "$CODEX_SOURCE_LINE"
     } >> "$RC_FILE"
     echo "[ok]   Added codex.env source line to $RC_FILE"

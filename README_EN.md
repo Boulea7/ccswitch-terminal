@@ -78,7 +78,7 @@ bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # or source ~/.bashrc
 ```
 
-After `bootstrap.sh`, four shell functions are registered (`ccsw`, `cxsw`, `gcsw`, `ccswitch`) and Gemini / Codex env var persistence is configured.
+After `bootstrap.sh`, four shell functions are registered (`ccsw`, `cxsw`, `gcsw`, `ccswitch`) and Gemini env plus Codex API key persistence is configured.
 
 ---
 
@@ -87,7 +87,7 @@ After `bootstrap.sh`, four shell functions are registered (`ccsw`, `cxsw`, `gcsw
 ```bash
 # -- switch --
 ccsw myprovider                   # Switch Claude (tool name optional)
-cxsw myprovider                   # Switch Codex (auto-activates OPENAI env vars)
+cxsw myprovider                   # Switch Codex (activates OPENAI_API_KEY and clears stale OPENAI_BASE_URL)
 gcsw myprovider                   # Switch Gemini (auto-activates GEMINI_API_KEY)
 ccsw all myprovider               # Switch all three tools at once
 
@@ -172,11 +172,12 @@ ccsw all claude-only output:
 [gemini] Skipped: provider 'claude-only' has no gemini config.
 ```
 
-**Gemini env var activation**: `GEMINI_API_KEY` is an environment variable — a child process cannot write it into the parent shell. The `gcsw` and `ccsw gemini/all` shell functions handle `eval` internally:
+**Gemini / Codex env activation**: `GEMINI_API_KEY` and `OPENAI_API_KEY` are environment variables — a child process cannot write them into the parent shell. The `gcsw`, `cxsw`, and `ccsw gemini/all` shell functions handle `eval` internally:
 
 ```bash
 gcsw myprovider          # Switch Gemini (env var activated automatically)
-ccsw all myprovider      # Switch all tools (GEMINI_API_KEY and OPENAI vars all activated)
+cxsw myprovider          # Switch Codex (API key activated, stale OPENAI_BASE_URL cleared)
+ccsw all myprovider      # Switch all tools
 ```
 
 **When calling the Python script directly (CI/CD or Docker)**, `eval` is still required:
@@ -281,18 +282,20 @@ flowchart LR
     P -- "reads" --> DB[("~/.ccswitch\nproviders.json")]
     P -- "resolves $TOKEN" --> E{{"env vars"}}
     E -- "write + backup" --> C["~/.claude/settings.json\nAnthropic protocol"]
-    E -- "write + backup" --> X["~/.codex/auth.json\nOpenAI protocol"]
+    E -- "write + backup" --> X["~/.codex/auth.json\nOpenAI key"]
+    E -- "write + backup" --> T["~/.codex/config.toml\nopenai_base_url"]
     E -- "write + stdout export" --> G["~/.gemini/settings.json\nGoogle protocol"]
 ```
 
 > [!NOTE]
-> **stdout / stderr separation**: all status messages go to stderr (visible in terminal), while `export GEMINI_API_KEY=...` goes to stdout (captured and executed by `eval`).
+> **stdout / stderr separation**: all status messages go to stderr (visible in terminal), while Codex / Gemini shell activation statements go to stdout (captured and executed by `eval`).
 
 | Tool | Config File | Fields Written |
 |------|-------------|----------------|
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, extra_env |
-| Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
-| Codex env | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
+| Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY` |
+| Codex CLI | `~/.codex/config.toml` | `openai_base_url` |
+| Codex env | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`, plus `unset OPENAI_BASE_URL` |
 | Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
 | Gemini env | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
 
