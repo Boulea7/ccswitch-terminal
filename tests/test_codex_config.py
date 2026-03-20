@@ -57,9 +57,61 @@ class UpsertRootTomlStringTests(unittest.TestCase):
                 'notes = """\n[not.a.table]\n"""\n\nopenai_base_url = "https://example.com/v1"\n\n[projects."/tmp"]\ntrust_level = "trusted"\n',
             )
 
+    def test_remove_root_key_preserves_other_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                'model = "gpt-5.4"\nopenai_base_url = "https://old.example/v1"\n\n[projects."/tmp"]\ntrust_level = "trusted"\n',
+                encoding="utf-8",
+            )
+
+            ccsw.remove_root_toml_key(path, "openai_base_url")
+
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                'model = "gpt-5.4"\n\n[projects."/tmp"]\ntrust_level = "trusted"\n',
+            )
+
+    def test_upsert_codex_provider_config_replaces_legacy_base_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                'model = "gpt-5.4"\nopenai_base_url = "https://old.example/v1"\n\n[projects."/tmp"]\ntrust_level = "trusted"\n',
+                encoding="utf-8",
+            )
+
+            ccsw.upsert_codex_provider_config(path, "88code", "https://www.88code.ai/openai/v1")
+
+            content = path.read_text(encoding="utf-8")
+            self.assertIn('model_provider = "ccswitch_active"\n', content)
+            self.assertNotIn('openai_base_url = "https://old.example/v1"\n', content)
+            self.assertIn('[model_providers.ccswitch_active]\n', content)
+            self.assertIn('name = "ccswitch: 88code"\n', content)
+            self.assertIn('base_url = "https://www.88code.ai/openai/v1"\n', content)
+            self.assertIn('env_key = "OPENAI_API_KEY"\n', content)
+            self.assertIn('supports_websockets = false\n', content)
+            self.assertIn('wire_api = "responses"\n', content)
+            self.assertIn('[projects."/tmp"]\ntrust_level = "trusted"\n', content)
+
+    def test_upsert_codex_provider_config_replaces_existing_custom_provider_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                'model = "gpt-5.4"\nmodel_provider = "ccswitch_active"\n\n[model_providers.ccswitch_active]\nname = "ccswitch: old"\nbase_url = "https://old.example/v1"\nenv_key = "OPENAI_API_KEY"\nsupports_websockets = false\nwire_api = "responses"\n\n[projects."/tmp"]\ntrust_level = "trusted"\n',
+                encoding="utf-8",
+            )
+
+            ccsw.upsert_codex_provider_config(path, "rightcode", "https://right.codes/codex/v1")
+
+            content = path.read_text(encoding="utf-8")
+            self.assertEqual(content.count("[model_providers.ccswitch_active]\n"), 1)
+            self.assertIn('name = "ccswitch: rightcode"\n', content)
+            self.assertIn('base_url = "https://right.codes/codex/v1"\n', content)
+            self.assertNotIn('base_url = "https://old.example/v1"\n', content)
+
 
 class CodexSwitchIntegrationTests(unittest.TestCase):
-    def test_codex_switch_writes_new_style_config(self) -> None:
+    def test_codex_switch_writes_custom_provider_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fake_home = root / "home"
@@ -90,7 +142,14 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             codex_env = (root / ".ccswitch" / "codex.env").read_text(encoding="utf-8")
 
             self.assertEqual(auth, {"OPENAI_API_KEY": "dummy-codex-token"})
-            self.assertIn('openai_base_url = "https://www.88code.ai/openai/v1"\n', config)
+            self.assertIn('model_provider = "ccswitch_active"\n', config)
+            self.assertIn('[model_providers.ccswitch_active]\n', config)
+            self.assertIn('name = "ccswitch: 88code"\n', config)
+            self.assertIn('base_url = "https://www.88code.ai/openai/v1"\n', config)
+            self.assertIn('env_key = "OPENAI_API_KEY"\n', config)
+            self.assertIn('supports_websockets = false\n', config)
+            self.assertIn('wire_api = "responses"\n', config)
+            self.assertNotIn('openai_base_url = "https://www.88code.ai/openai/v1"\n', config)
             self.assertIn('[projects."/tmp"]\ntrust_level = "trusted"\n', config)
             self.assertEqual(
                 codex_env,

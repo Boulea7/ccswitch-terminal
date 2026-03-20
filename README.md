@@ -87,7 +87,7 @@ source ~/.zshrc   # 或 source ~/.bashrc
 ```bash
 # -- 切换 --
 ccsw myprovider                   # 切换 Claude（省略工具名）
-cxsw myprovider                   # 切换 Codex（自动激活 OPENAI_API_KEY，并清理旧 OPENAI_BASE_URL）
+cxsw myprovider                   # 切换 Codex（自动激活 OPENAI_API_KEY，并更新自定义 model_provider）
 gcsw myprovider                   # 切换 Gemini（自动激活环境变量）
 ccsw all myprovider               # 三端同时切换
 
@@ -176,7 +176,7 @@ ccsw all claude-only 输出：
 
 ```bash
 gcsw myprovider          # 切换 Gemini（环境变量自动激活）
-cxsw myprovider          # 切换 Codex（API key 自动激活，并清理旧 OPENAI_BASE_URL）
+cxsw myprovider          # 切换 Codex（API key 自动激活，并更新自定义 model_provider）
 ccsw all myprovider      # 切换全部工具
 ```
 
@@ -188,6 +188,33 @@ eval "$(python3 ccsw.py all myprovider)"
 ```
 
 每次成功切换 Gemini provider 时，ccsw 会将 export 语句写入 `~/.ccswitch/active.env`，新开 shell 自动 source，无需重新运行 ccsw。
+
+</details>
+
+<details>
+<summary><b>Codex 0.116+ 兼容性说明</b></summary>
+
+从 `codex-cli 0.116.0` 开始，仅覆写根级 `openai_base_url` 对部分 OpenAI 兼容代理已经不够可靠。CLI 仍可能把第三方代理当成支持 Responses WebSocket 的内置 OpenAI provider，进而在会话初始化时发起 WebSocket / `GET` 握手。
+
+这会让只支持 HTTP Responses 的代理在新会话时直接报错，例如：
+
+- `relay: Request method 'GET' is not supported`
+- `GET /openai/v1/models` 返回 404
+
+因此，`ccsw` 对 Codex 的写入方式已经调整为：
+
+```toml
+model_provider = "ccswitch_active"
+
+[model_providers.ccswitch_active]
+name = "ccswitch: myprovider"
+base_url = "https://api.example.com/openai/v1"
+env_key = "OPENAI_API_KEY"
+supports_websockets = false
+wire_api = "responses"
+```
+
+这样 Codex 会把目标中转站当成一个显式声明“不支持 WebSocket”的自定义 provider，从而优先走纯 HTTP Responses 路径。
 
 </details>
 
@@ -283,7 +310,7 @@ flowchart LR
     P -- "解析 $TOKEN" --> E{{"env vars"}}
     E -- "写入 + 备份" --> C["~/.claude/settings.json\nAnthropic 协议"]
     E -- "写入 + 备份" --> X["~/.codex/auth.json\nOpenAI key"]
-    E -- "写入 + 备份" --> T["~/.codex/config.toml\nopenai_base_url"]
+    E -- "写入 + 备份" --> T["~/.codex/config.toml\nmodel_provider + model_providers.ccswitch_active"]
     E -- "写入 + stdout export" --> G["~/.gemini/settings.json\nGoogle 协议"]
 ```
 
@@ -294,10 +321,16 @@ flowchart LR
 |------|----------|----------|
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, extra_env |
 | Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY` |
-| Codex CLI | `~/.codex/config.toml` | `openai_base_url` |
+| Codex CLI | `~/.codex/config.toml` | `model_provider`, `[model_providers.ccswitch_active]` |
 | Codex 环境变量 | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`，并 `unset OPENAI_BASE_URL` |
 | Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
 | Gemini 环境变量 | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
+
+> [!NOTE]
+> 对 Codex CLI，`ccswitch` 现在会写入一个自定义 `model_provider`，并显式设置 `supports_websockets = false`。这样可以兼容只支持 HTTP Responses、但不支持 Responses WebSocket 的 OpenAI 兼容代理。
+
+> [!IMPORTANT]
+> 已验证 `88code` 在 `codex-cli 0.116.x` 下若沿用“内置 OpenAI provider + 根级 openai_base_url 覆盖”会触发 `responses_websocket` 并报 `c4`。当前实现改为自定义 provider 后，可继续在新版 Codex CLI 上使用 88code。
 
 </details>
 
@@ -335,6 +368,9 @@ flowchart LR
 ```
 
 `extra_env` 中值为 `null` 表示**删除该键**（用于覆盖其他 provider 留下的残留配置）。
+
+> [!NOTE]
+> 这里展示的是 `ccswitch` 自己维护的 provider store。真正写入 Codex 的是 `~/.codex/config.toml` 里的 `model_provider = "ccswitch_active"` 与 `[model_providers.ccswitch_active]`，不是把 `providers.json` 原样拷贝过去。
 
 </details>
 

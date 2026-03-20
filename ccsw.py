@@ -48,6 +48,9 @@ CODEX_CONFIG = _HOME / ".codex" / "config.toml"
 GEMINI_SETTINGS = _HOME / ".gemini" / "settings.json"
 LOCAL_ENV_PATH = Path(__file__).resolve().parent / ".env.local"
 BACKUP_SUFFIX_FMT = "%Y%m%d-%H%M%S"
+# Stable Codex provider entry managed by ccsw. The active Codex switch rewrites
+# this block instead of mutating built-in provider behavior.
+CODEX_PROVIDER_ID = "ccswitch_active"
 
 # Valid shell variable name (used to validate keys in .env.local)
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -402,9 +405,9 @@ def _toml_string(value: str) -> str:
     return f'"{escaped}"'
 
 
-def upsert_root_toml_string(path: Path, key: str, value: str) -> None:
-    """Set a root-level TOML string value while preserving the rest of the file."""
-    new_line = f"{key} = {_toml_string(value)}"
+def upsert_root_toml_value(path: Path, key: str, literal: str) -> None:
+    """Set a root-level TOML value while preserving the rest of the file."""
+    new_line = f"{key} = {literal}"
     if path.exists():
         lines = path.read_text(encoding="utf-8").splitlines()
     else:
@@ -435,6 +438,93 @@ def upsert_root_toml_string(path: Path, key: str, value: str) -> None:
     if content:
         content += "\n"
     save_text(path, content)
+
+
+def upsert_root_toml_string(path: Path, key: str, value: str) -> None:
+    """Set a root-level TOML string value while preserving the rest of the file."""
+    upsert_root_toml_value(path, key, _toml_string(value))
+
+
+def upsert_root_toml_bool(path: Path, key: str, value: bool) -> None:
+    """Set a root-level TOML boolean value while preserving the rest of the file."""
+    upsert_root_toml_value(path, key, "true" if value else "false")
+
+
+def remove_root_toml_key(path: Path, key: str) -> None:
+    """Remove a root-level TOML key if present."""
+    if not path.exists():
+        return
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    first_table_idx = _find_first_root_toml_table(lines)
+    search_end = first_table_idx if first_table_idx is not None else len(lines)
+    new_lines = [
+        line
+        for idx, line in enumerate(lines)
+        if idx >= search_end or not re.match(rf"^\s*{re.escape(key)}\s*=", line)
+    ]
+
+    content = "\n".join(new_lines)
+    if content:
+        content += "\n"
+    save_text(path, content)
+
+
+def replace_toml_table_block(path: Path, header: str, body_lines: list[str]) -> None:
+    """Replace or append a TOML table block while preserving unrelated content."""
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+
+    multiline_state: Optional[str] = None
+    start_idx: Optional[int] = None
+    end_idx: Optional[int] = None
+
+    for idx, line in enumerate(lines):
+        if multiline_state is None and line.strip() == header:
+            start_idx = idx
+            break
+        multiline_state = _advance_toml_multiline_state(line, multiline_state)
+
+    if start_idx is not None:
+        multiline_state = None
+        end_idx = len(lines)
+        for idx in range(start_idx + 1, len(lines)):
+            line = lines[idx]
+            if multiline_state is None and _TOML_TABLE_RE.match(line):
+                end_idx = idx
+                break
+            multiline_state = _advance_toml_multiline_state(line, multiline_state)
+        del lines[start_idx:end_idx]
+        while start_idx < len(lines) and not lines[start_idx].strip():
+            del lines[start_idx]
+        while start_idx > 0 and start_idx <= len(lines) and not lines[start_idx - 1].strip():
+            del lines[start_idx - 1]
+            start_idx -= 1
+
+    if lines and lines[-1].strip():
+        lines.append("")
+    lines.extend([header, *body_lines])
+
+    content = "\n".join(lines)
+    if content:
+        content += "\n"
+    save_text(path, content)
+
+
+def upsert_codex_provider_config(path: Path, provider_name: str, base_url: str) -> None:
+    """Configure Codex to use a custom provider that disables websocket transport."""
+    upsert_root_toml_string(path, "model_provider", CODEX_PROVIDER_ID)
+    remove_root_toml_key(path, "openai_base_url")
+    replace_toml_table_block(
+        path,
+        f"[model_providers.{CODEX_PROVIDER_ID}]",
+        [
+            f'name = {_toml_string(f"ccswitch: {provider_name}")}',
+            f"base_url = {_toml_string(base_url)}",
+            'env_key = "OPENAI_API_KEY"',
+            "supports_websockets = false",
+            'wire_api = "responses"',
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -705,7 +795,7 @@ def write_claude(conf: Dict[str, Any]) -> Optional[list]:
     return []
 
 
-def write_codex(conf: Dict[str, Any]) -> Optional[list]:
+def write_codex(conf: Dict[str, Any], provider_name: str) -> Optional[list]:
     """Write Codex auth.json + config.toml. Returns env pairs on success, None on failure."""
     token = resolve_token(conf.get("token"))
     base_url = conf.get("base_url")
@@ -725,7 +815,7 @@ def write_codex(conf: Dict[str, Any]) -> Optional[list]:
     data.pop("OPENAI_BASE_URL", None)
 
     save_json(CODEX_AUTH, data)
-    upsert_root_toml_string(CODEX_CONFIG, "openai_base_url", base_url)
+    upsert_codex_provider_config(CODEX_CONFIG, provider_name, base_url)
     if auth_bak:
         info(f"[codex] Backed up auth.json -> {auth_bak.name}")
     if config_bak:
@@ -787,7 +877,7 @@ def switch_tool(store: Dict[str, Any], tool: str, provider_name: str) -> None:
     if tool == "claude":
         exports = write_claude(conf)
     elif tool == "codex":
-        exports = write_codex(conf)
+        exports = write_codex(conf, provider_name)
     elif tool == "gemini":
         exports = write_gemini(conf)
     else:

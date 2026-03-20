@@ -1,6 +1,13 @@
 .env
 .env.*
 .env.local
+**/api_key*
+**/secret*
+credentials*
+*.pem
+*.key
+*.p12
+*.pfx
 __pycache__/
 *.pyc
 *.pyo

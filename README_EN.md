@@ -87,7 +87,7 @@ After `bootstrap.sh`, four shell functions are registered (`ccsw`, `cxsw`, `gcsw
 ```bash
 # -- switch --
 ccsw myprovider                   # Switch Claude (tool name optional)
-cxsw myprovider                   # Switch Codex (activates OPENAI_API_KEY and clears stale OPENAI_BASE_URL)
+cxsw myprovider                   # Switch Codex (activates OPENAI_API_KEY and updates the custom model_provider)
 gcsw myprovider                   # Switch Gemini (auto-activates GEMINI_API_KEY)
 ccsw all myprovider               # Switch all three tools at once
 
@@ -176,7 +176,7 @@ ccsw all claude-only output:
 
 ```bash
 gcsw myprovider          # Switch Gemini (env var activated automatically)
-cxsw myprovider          # Switch Codex (API key activated, stale OPENAI_BASE_URL cleared)
+cxsw myprovider          # Switch Codex (API key activated and the custom model_provider refreshed)
 ccsw all myprovider      # Switch all tools
 ```
 
@@ -188,6 +188,33 @@ eval "$(python3 ccsw.py all myprovider)"
 ```
 
 Every successful Gemini switch writes the export statement to `~/.ccswitch/active.env`. New shell sessions source this file automatically — no need to re-run ccsw.
+
+</details>
+
+<details>
+<summary><b>Codex 0.116+ Compatibility Note</b></summary>
+
+Starting with `codex-cli 0.116.0`, overriding only the root `openai_base_url` is no longer reliable for some OpenAI-compatible relays. The CLI may still treat the endpoint as a built-in OpenAI provider and attempt the Responses WebSocket transport during session startup.
+
+For relays that only support HTTP Responses, this shows up as startup failures such as:
+
+- `relay: Request method 'GET' is not supported`
+- `GET /openai/v1/models` returning 404
+
+To avoid that, `ccsw` now writes Codex config in this shape:
+
+```toml
+model_provider = "ccswitch_active"
+
+[model_providers.ccswitch_active]
+name = "ccswitch: myprovider"
+base_url = "https://api.example.com/openai/v1"
+env_key = "OPENAI_API_KEY"
+supports_websockets = false
+wire_api = "responses"
+```
+
+This tells Codex to treat the relay as an explicit custom provider that does **not** support the Responses WebSocket transport, so it prefers the HTTP Responses path instead.
 
 </details>
 
@@ -283,7 +310,7 @@ flowchart LR
     P -- "resolves $TOKEN" --> E{{"env vars"}}
     E -- "write + backup" --> C["~/.claude/settings.json\nAnthropic protocol"]
     E -- "write + backup" --> X["~/.codex/auth.json\nOpenAI key"]
-    E -- "write + backup" --> T["~/.codex/config.toml\nopenai_base_url"]
+    E -- "write + backup" --> T["~/.codex/config.toml\nmodel_provider + model_providers.ccswitch_active"]
     E -- "write + stdout export" --> G["~/.gemini/settings.json\nGoogle protocol"]
 ```
 
@@ -294,10 +321,16 @@ flowchart LR
 |------|-------------|----------------|
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_BASE_URL`, extra_env |
 | Codex CLI | `~/.codex/auth.json` | `OPENAI_API_KEY` |
-| Codex CLI | `~/.codex/config.toml` | `openai_base_url` |
+| Codex CLI | `~/.codex/config.toml` | `model_provider`, `[model_providers.ccswitch_active]` |
 | Codex env | `~/.ccswitch/codex.env` | `OPENAI_API_KEY`, plus `unset OPENAI_BASE_URL` |
 | Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
 | Gemini env | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
+
+> [!NOTE]
+> For Codex CLI, `ccswitch` now writes a custom `model_provider` and explicitly sets `supports_websockets = false`. This keeps Codex compatible with OpenAI-compatible relays that support HTTP Responses but not the Responses WebSocket transport.
+
+> [!IMPORTANT]
+> We verified that `88code` on `codex-cli 0.116.x` fails with `c4` if used via the built-in OpenAI provider plus a root-level `openai_base_url` override. The custom provider flow implemented here avoids that path and keeps 88code usable on newer Codex CLI versions.
 
 </details>
 
@@ -335,6 +368,9 @@ Located at `~/.ccswitch/providers.json`:
 ```
 
 `extra_env` values of `null` **remove** that key from the target config — used to clean up residual settings left by other providers.
+
+> [!NOTE]
+> This example shows the `ccswitch` provider store, not the exact Codex runtime config. The actual Codex config written to `~/.codex/config.toml` uses `model_provider = "ccswitch_active"` plus `[model_providers.ccswitch_active]`.
 
 </details>
 

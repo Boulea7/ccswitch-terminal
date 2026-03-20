@@ -114,7 +114,7 @@ else
         printf '      python3 "$_CCSW_PY" claude "$@" ;;\n'
         printf '  esac\n'
         printf '}\n'
-        # cxsw: codex shortcut (eval built-in, activates OPENAI_API_KEY and clears legacy OPENAI_BASE_URL)
+        # cxsw: codex shortcut (eval built-in, activates OPENAI_API_KEY and refreshes the custom Codex provider config)
         printf 'cxsw() { eval "$(python3 "$_CCSW_PY" codex "$@")"; }\n'
         # gcsw: gemini shortcut (eval built-in, activates GEMINI_API_KEY)
         printf 'gcsw() { eval "$(python3 "$_CCSW_PY" gemini "$@")"; }\n'
