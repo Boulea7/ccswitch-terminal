@@ -8,7 +8,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![Zero Dependency](https://img.shields.io/badge/zero--dependency-stdlib_only-success.svg)](#installation)
 
-[简体中文](README.md) | English
+[简体中文](README.md) | English | [日本語](README_JA.md) | [Español](README_ES.md) | [Português](README_PT.md) | [Русский](README_RU.md)
 
 </div>
 
@@ -20,7 +20,7 @@ Using Claude Code, Codex CLI, and Gemini CLI simultaneously? Tired of manually e
 
 - **One-click switching**: `ccsw myprovider` switches Claude; `ccsw all myprovider` syncs all three tools at once
 - **Config isolation**: each provider maintains independent URLs and tokens for all three protocols (Anthropic / OpenAI / Google)
-- **Security first**: tokens are stored as `$ENV_VAR` references — secrets never enter config files; automatic backup before every write
+- **Clear security boundary**: `providers.json` stores only `$ENV_VAR` references; switching writes the resolved secrets into the target tool config or activation files, with backups created before overwriting existing files
 - **Seamless integration**: live switching in active Claude Code sessions; Gemini env vars auto-activated; no restarts needed
 
 ---
@@ -116,6 +116,9 @@ MY_PROVIDER_GEMINI_KEY=<your-gemini-key>
 ```
 
 ccsw loads this file automatically at startup. It only sets variables not already present in the environment (existing shell exports take precedence).
+
+> [!IMPORTANT]
+> `.env.local` solves how secrets are referenced from `providers.json` and shell startup files; once you run a switch, the resolved secrets are still written into the target tool config or activation files.
 
 > [!WARNING]
 > `.env.local` contains plaintext secrets. Make sure it is listed in `.gitignore`.
@@ -287,6 +290,10 @@ ccsw add myprovider \
   --gemini-key   '$MY_PROVIDER_GEMINI_KEY'
 ```
 
+Optional extra flag:
+
+- `--gemini-auth-type <TYPE>`: sets the Gemini `auth_type` stored in the provider. During switching it is written to `security.auth.selectedType` in `~/.gemini/settings.json`. If omitted, the existing provider value is kept; if the provider has no value yet, runtime falls back to `api-key`.
+
 **Update a single field:**
 
 ```bash
@@ -326,11 +333,11 @@ flowchart LR
 | Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
 | Gemini env | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
 
+> [!IMPORTANT]
+> `providers.json` stores provider definitions and `$ENV_VAR` references; when a switch actually runs, the resolved secrets are written into the runtime config or activation files listed above.
+
 > [!NOTE]
 > For Codex CLI, `ccswitch` now writes a custom `model_provider` and explicitly sets `supports_websockets = false`. This keeps Codex compatible with OpenAI-compatible relays that support HTTP Responses but not the Responses WebSocket transport.
-
-> [!IMPORTANT]
-> We verified that `88code` on `codex-cli 0.116.x` fails with `c4` if used via the built-in OpenAI provider plus a root-level `openai_base_url` override. The custom provider flow implemented here avoids that path and keeps 88code usable on newer Codex CLI versions.
 
 </details>
 
@@ -370,7 +377,7 @@ Located at `~/.ccswitch/providers.json`:
 `extra_env` values of `null` **remove** that key from the target config — used to clean up residual settings left by other providers.
 
 > [!NOTE]
-> This example shows the `ccswitch` provider store, not the exact Codex runtime config. The actual Codex config written to `~/.codex/config.toml` uses `model_provider = "ccswitch_active"` plus `[model_providers.ccswitch_active]`.
+> This example shows the `ccswitch` provider store. It keeps provider definitions and `$ENV_VAR` references; after a switch, the resolved secrets are written to the target config files listed above. For Codex specifically, the runtime config written to `~/.codex/config.toml` uses `model_provider = "ccswitch_active"` plus `[model_providers.ccswitch_active]`.
 
 </details>
 
@@ -415,6 +422,31 @@ docker exec -it mycontainer bash -c \
 
 ---
 
+## Develop & Verify
+
+After changing the script or documentation, run at least this minimal verification set:
+
+```bash
+python3 ccsw.py -h
+python3 ccsw.py list
+python3 -m unittest discover -s tests -q
+```
+
+For a lightweight post-install smoke check, prefer commands that do not rewrite tool configs:
+
+```bash
+type ccsw
+type cxsw
+type gcsw
+ccsw list
+ccsw show
+```
+
+> [!NOTE]
+> Actual `switch` commands write files under `~/.claude`, `~/.codex`, `~/.gemini`, or `~/.ccswitch`. If you only want to confirm the installation worked, start with the read-only checks above.
+
+---
+
 ## FAQ
 
 <details>
@@ -448,7 +480,7 @@ ccsw creates a timestamped backup before every write, e.g. `settings.json.bak-20
 <details>
 <summary><b>Q: What's the difference between .env.local and exporting in ~/.zshrc?</b></summary>
 
-`.env.local` tokens are only loaded when ccsw runs — they don't pollute the global shell environment. Exports in `~/.zshrc` are present in every shell session. For AI tool tokens, `.env.local` is safer: the values won't accidentally appear in `env` output or other tools.
+`.env.local` tokens are only loaded when ccsw runs — they don't pollute the global shell environment. Exports in `~/.zshrc` are present in every shell session. For AI tool tokens, `.env.local` reduces global shell exposure, but a successful switch still writes the resolved secrets into the target tool config or activation files.
 
 </details>
 

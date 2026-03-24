@@ -8,7 +8,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![Zero Dependency](https://img.shields.io/badge/zero--dependency-stdlib_only-success.svg)](#快速安装)
 
-[English](README_EN.md) | 简体中文
+[English](README_EN.md) | 简体中文 | [日本語](README_JA.md) | [Español](README_ES.md) | [Português](README_PT.md) | [Русский](README_RU.md)
 
 </div>
 
@@ -20,7 +20,7 @@
 
 - **一键切换**：`ccsw myprovider` 即完成 Claude 切换；`ccsw all myprovider` 三端同步
 - **配置隔离**：每个服务商为三套协议（Anthropic / OpenAI / Google）各自维护独立的 URL 和 Token
-- **安全优先**：Token 以 `$ENV_VAR` 形式引用，从不写入配置文件；写入前自动备份
+- **安全边界清晰**：`providers.json` 只保存 `$ENV_VAR` 引用；切换时会把解析后的密钥写入目标工具配置或激活文件，并在覆盖前自动备份已有文件
 - **无缝衔接**：Claude Code 对话中实时热切换，Gemini 环境变量自动激活，无需重启
 
 ---
@@ -116,6 +116,9 @@ MY_PROVIDER_GEMINI_KEY=<your-gemini-key>
 ```
 
 `ccsw` 启动时自动读取此文件，优先级低于已有的 shell 环境变量（不会覆盖已 `export` 的值）。
+
+> [!IMPORTANT]
+> `.env.local` 解决的是“如何在 `providers.json` 与 shell 启动文件中引用密钥”这个问题；一旦执行切换，解析出的密钥仍会写入对应工具的配置文件或激活文件。
 
 > [!WARNING]
 > `.env.local` 包含明文密钥，请确保已在 `.gitignore` 中忽略此文件。
@@ -287,6 +290,10 @@ ccsw add myprovider \
   --gemini-key   '$MY_PROVIDER_GEMINI_KEY'
 ```
 
+可选补充参数：
+
+- `--gemini-auth-type <TYPE>`：设置 provider 中 Gemini 的 `auth_type`。切换时会写入 `~/.gemini/settings.json` 的 `security.auth.selectedType`。若未显式设置，则保留 provider 中已有值；若 provider 中也没有，则运行时默认使用 `api-key`。
+
 **只更新部分字段：**
 
 ```bash
@@ -326,11 +333,11 @@ flowchart LR
 | Gemini CLI | `~/.gemini/settings.json` | `security.auth.selectedType` |
 | Gemini 环境变量 | stdout + `~/.ccswitch/active.env` | `GEMINI_API_KEY` |
 
+> [!IMPORTANT]
+> `providers.json` 保存的是 provider 定义和 `$ENV_VAR` 引用；真正执行切换时，解析出的密钥会按上表写入各工具的运行时配置或激活文件。
+
 > [!NOTE]
 > 对 Codex CLI，`ccswitch` 现在会写入一个自定义 `model_provider`，并显式设置 `supports_websockets = false`。这样可以兼容只支持 HTTP Responses、但不支持 Responses WebSocket 的 OpenAI 兼容代理。
-
-> [!IMPORTANT]
-> 已验证 `88code` 在 `codex-cli 0.116.x` 下若沿用“内置 OpenAI provider + 根级 openai_base_url 覆盖”会触发 `responses_websocket` 并报 `c4`。当前实现改为自定义 provider 后，可继续在新版 Codex CLI 上使用 88code。
 
 </details>
 
@@ -370,7 +377,7 @@ flowchart LR
 `extra_env` 中值为 `null` 表示**删除该键**（用于覆盖其他 provider 留下的残留配置）。
 
 > [!NOTE]
-> 这里展示的是 `ccswitch` 自己维护的 provider store。真正写入 Codex 的是 `~/.codex/config.toml` 里的 `model_provider = "ccswitch_active"` 与 `[model_providers.ccswitch_active]`，不是把 `providers.json` 原样拷贝过去。
+> 这里展示的是 `ccswitch` 自己维护的 provider store。它保存 provider 定义与 `$ENV_VAR` 引用；执行切换后，解析出的密钥会写入上文列出的目标配置文件。对 Codex 来说，真正写入的是 `~/.codex/config.toml` 里的 `model_provider = "ccswitch_active"` 与 `[model_providers.ccswitch_active]`，不是把 `providers.json` 原样拷贝过去。
 
 </details>
 
@@ -415,6 +422,31 @@ docker exec -it mycontainer bash -c \
 
 ---
 
+## 开发与验证
+
+如果你修改了脚本或文档，至少执行以下最小验证：
+
+```bash
+python3 ccsw.py -h
+python3 ccsw.py list
+python3 -m unittest discover -s tests -q
+```
+
+安装后的轻量 smoke check 可以优先使用这些不会改写目标工具配置的命令：
+
+```bash
+type ccsw
+type cxsw
+type gcsw
+ccsw list
+ccsw show
+```
+
+> [!NOTE]
+> 真正的 `switch` 命令会写入 `~/.claude`、`~/.codex`、`~/.gemini` 或 `~/.ccswitch` 下的配置或激活文件；如只想验证安装是否成功，优先使用上面的只读检查命令。
+
+---
+
 ## FAQ
 
 <details>
@@ -448,7 +480,7 @@ Token 配置为 `$MY_ENV_VAR`，但该环境变量当前未设置。
 <details>
 <summary><b>Q: .env.local 和 ~/.zshrc 中的 export 有什么区别？</b></summary>
 
-`.env.local` 的 token 只在 `ccsw` 运行时加载，不会污染全局 shell 环境；写入 `~/.zshrc` 的 `export` 在每个新 shell 中都存在。对于 AI 工具 token，推荐 `.env.local`：更安全，不会被意外打印到终端。
+`.env.local` 的 token 只在 `ccsw` 运行时加载，不会污染全局 shell 环境；写入 `~/.zshrc` 的 `export` 在每个新 shell 中都存在。对于 AI 工具 token，推荐 `.env.local`：它能减少全局 shell 暴露面，但成功切换后解析出的密钥仍会写入目标工具配置或激活文件。
 
 </details>
 
