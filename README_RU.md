@@ -1,6 +1,6 @@
 <div align="center">
 
-# ccswitch--terminal
+# ccswitch-terminal
 
 **Единый переключатель API providers для Claude Code + Codex CLI + Gemini CLI**
 
@@ -32,7 +32,7 @@
 ```
 Пожалуйста, установи ccswitch (переключатель API для AI-инструментов в терминале):
 
-Репозиторий: https://github.com/Boulea7/ccswitch--terminal
+Репозиторий: https://github.com/Boulea7/ccswitch-terminal
 Установка: клонировать в ~/ccsw → запустить bootstrap.sh → source ~/.zshrc
 
 Затем настрой один provider:
@@ -53,7 +53,7 @@
 ```
 Пожалуйста, установи ccswitch (переключатель API для AI-инструментов в терминале):
 
-Репозиторий: https://github.com/Boulea7/ccswitch--terminal
+Репозиторий: https://github.com/Boulea7/ccswitch-terminal
 Установка: клонировать в ~/ccsw → запустить bootstrap.sh → source ~/.zshrc
 
 Затем настрой один provider:
@@ -73,7 +73,7 @@
 **Ручная установка (3 команды):**
 
 ```bash
-git clone https://github.com/Boulea7/ccswitch--terminal ~/ccsw
+git clone https://github.com/Boulea7/ccswitch-terminal ~/ccsw
 bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # или source ~/.bashrc
 ```
@@ -498,6 +498,6 @@ MIT
 
 <div align="right">
 
-[⬆ Наверх](#ccswitch--terminal)
+[⬆ Наверх](#ccswitch-terminal)
 
 </div>

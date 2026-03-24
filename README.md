@@ -1,6 +1,6 @@
 <div align="center">
 
-# ccswitch--terminal
+# ccswitch-terminal
 
 **Claude Code + Codex CLI + Gemini CLI 三端统一 API 服务商切换工具**
 
@@ -32,7 +32,7 @@
 ```
 请帮我安装 ccswitch (AI 终端工具 API 切换器)：
 
-仓库：https://github.com/Boulea7/ccswitch--terminal
+仓库：https://github.com/Boulea7/ccswitch-terminal
 安装：克隆到 ~/ccsw → 运行 bootstrap.sh → source ~/.zshrc
 
 然后帮我配置一个 provider：
@@ -53,7 +53,7 @@ token 明文写入 ~/ccsw/.env.local，providers.json 中用 $ENV_VAR 引用。
 ```
 请帮我安装 ccswitch (AI 终端工具 API 切换器)：
 
-仓库：https://github.com/Boulea7/ccswitch--terminal
+仓库：https://github.com/Boulea7/ccswitch-terminal
 安装：克隆到 ~/ccsw → 运行 bootstrap.sh → source ~/.zshrc
 
 然后帮我配置一个 provider：
@@ -73,7 +73,7 @@ token 明文写入 ~/ccsw/.env.local，providers.json 中用 $ENV_VAR 引用。
 **手动安装（3 行命令）：**
 
 ```bash
-git clone https://github.com/Boulea7/ccswitch--terminal ~/ccsw
+git clone https://github.com/Boulea7/ccswitch-terminal ~/ccsw
 bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # 或 source ~/.bashrc
 ```
@@ -498,6 +498,6 @@ MIT
 
 <div align="right">
 
-[⬆ 返回顶部](#ccswitch--terminal)
+[⬆ 返回顶部](#ccswitch-terminal)
 
 </div>

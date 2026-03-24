@@ -1,6 +1,6 @@
 <div align="center">
 
-# ccswitch--terminal
+# ccswitch-terminal
 
 **Conmutador unificado de proveedores API para Claude Code + Codex CLI + Gemini CLI**
 
@@ -32,7 +32,7 @@ Si usas Claude Code, Codex CLI y Gemini CLI al mismo tiempo, cambiar de proveedo
 ```
 Por favor instala ccswitch (conmutador API para herramientas terminales de IA):
 
-Repositorio: https://github.com/Boulea7/ccswitch--terminal
+Repositorio: https://github.com/Boulea7/ccswitch-terminal
 Instalación: clonar en ~/ccsw → ejecutar bootstrap.sh → source ~/.zshrc
 
 Luego configura un provider:
@@ -53,7 +53,7 @@ Al final ejecuta ccsw list y ccsw show para confirmar.
 ```
 Por favor instala ccswitch (conmutador API para herramientas terminales de IA):
 
-Repositorio: https://github.com/Boulea7/ccswitch--terminal
+Repositorio: https://github.com/Boulea7/ccswitch-terminal
 Instalación: clonar en ~/ccsw → ejecutar bootstrap.sh → source ~/.zshrc
 
 Luego configura un provider:
@@ -73,7 +73,7 @@ Al final ejecuta ccsw list y ccsw show para confirmar.
 **Instalación manual (3 comandos):**
 
 ```bash
-git clone https://github.com/Boulea7/ccswitch--terminal ~/ccsw
+git clone https://github.com/Boulea7/ccswitch-terminal ~/ccsw
 bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # o source ~/.bashrc
 ```
@@ -498,6 +498,6 @@ MIT
 
 <div align="right">
 
-[⬆ Volver arriba](#ccswitch--terminal)
+[⬆ Volver arriba](#ccswitch-terminal)
 
 </div>

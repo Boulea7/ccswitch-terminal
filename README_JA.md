@@ -1,6 +1,6 @@
 <div align="center">
 
-# ccswitch--terminal
+# ccswitch-terminal
 
 **Claude Code + Codex CLI + Gemini CLI 向け統一 API Provider 切り替えツール**
 
@@ -32,7 +32,7 @@ Claude Code、Codex CLI、Gemini CLI を併用していますか。API Provider 
 ```
 ccswitch (AI ターミナルツール用 API スイッチャー) をインストールしてください:
 
-リポジトリ: https://github.com/Boulea7/ccswitch--terminal
+リポジトリ: https://github.com/Boulea7/ccswitch-terminal
 セットアップ: ~/ccsw に clone → bootstrap.sh を実行 → source ~/.zshrc
 
 そのあと provider を 1 つ設定してください:
@@ -53,7 +53,7 @@ token は平文で ~/ccsw/.env.local に保存し、providers.json では $ENV_V
 ```
 ccswitch (AI ターミナルツール用 API スイッチャー) をインストールしてください:
 
-リポジトリ: https://github.com/Boulea7/ccswitch--terminal
+リポジトリ: https://github.com/Boulea7/ccswitch-terminal
 セットアップ: ~/ccsw に clone → bootstrap.sh を実行 → source ~/.zshrc
 
 そのあと provider を 1 つ設定してください:
@@ -73,7 +73,7 @@ token は平文で ~/ccsw/.env.local に保存し、providers.json では $ENV_V
 **手動インストール（3 コマンド）:**
 
 ```bash
-git clone https://github.com/Boulea7/ccswitch--terminal ~/ccsw
+git clone https://github.com/Boulea7/ccswitch-terminal ~/ccsw
 bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # または source ~/.bashrc
 ```
@@ -498,6 +498,6 @@ MIT
 
 <div align="right">
 
-[⬆ トップへ戻る](#ccswitch--terminal)
+[⬆ トップへ戻る](#ccswitch-terminal)
 
 </div>
