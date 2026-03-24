@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/ccswitch-terminal-banner.webp" alt="ccswitch-terminal banner" width="100%">
+
 # ccswitch-terminal
 
 **Claude Code + Codex CLI + Gemini CLI 向け統一 API Provider 切り替えツール**
