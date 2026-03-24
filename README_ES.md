@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/ccswitch-terminal-banner.webp" alt="ccswitch-terminal banner" width="100%">
+
 # ccswitch-terminal
 
 **Conmutador unificado de proveedores API para Claude Code + Codex CLI + Gemini CLI**
