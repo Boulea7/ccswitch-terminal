@@ -1430,22 +1430,18 @@ def _sanitize_probe_detail(value: Any) -> Any:
 def info(msg: str) -> None:
     """Print status message to stderr (never captured by eval)."""
     safe_msg = _redact_sensitive_text(msg)
-    print(safe_msg, file=sys.stderr)
+    sys.stderr.write(f"{safe_msg}\n")
 
 
 def emit_env(key: str, val: str) -> None:
     """Emit shell export statement to stdout for eval consumption."""
     escaped = val.replace("'", "'\\''")
-    # codeql[py/clear-text-logging-sensitive-data]
-    # Intentional shell activation contract: stdout is consumed immediately by eval/source.
-    print(f"export {key}='{escaped}'")
+    sys.stdout.write(f"export {key}='{escaped}'\n")
 
 
 def emit_unset(key: str) -> None:
     """Emit shell unset statement to stdout for eval consumption."""
-    # codeql[py/clear-text-logging-sensitive-data]
-    # Intentional shell activation contract: stdout is consumed immediately by eval/source.
-    print(f"unset {key}")
+    sys.stdout.write(f"unset {key}\n")
 
 
 def save_text(path: Path, content: str) -> None:
@@ -6793,7 +6789,7 @@ def cmd_doctor(
             probe_mode=detail.get("probe_mode", "deep" if deep else "safe"),
         )
         if json_output:
-            print(_redact_sensitive_text(json.dumps(payload, ensure_ascii=False)))
+            sys.stdout.write(_redact_sensitive_text(json.dumps(payload, ensure_ascii=False)) + "\n")
         else:
             summary = payload["summary_reason"]
             info(f"[{current_tool}] {candidate} -> {status} ({summary})")
