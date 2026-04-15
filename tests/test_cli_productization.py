@@ -2909,44 +2909,47 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
         self.assertEqual(payload["post_restore_validation"]["status"], "ok")
 
     def test_doctor_codex_keeps_generic_checks_alongside_probe_checks(self) -> None:
-        store = {
-            "version": 2,
-            "active": {tool: None for tool in ccsw.ALL_TOOLS},
-            "aliases": {},
-            "providers": {
-                "demo": {
-                    "codex": {
-                        "base_url": "https://relay.example/v1",
-                        "token": ccsw.env_ref("DEMO_CODEX_TOKEN"),
-                    }
-                }
-            },
-            "profiles": {},
-            "settings": {},
-        }
-
-        with patch.dict(os.environ, {"DEMO_CODEX_TOKEN": "demo-token"}, clear=False), patch(
-            "ccsw._probe_codex_target",
-            return_value=(
-                "ok",
-                {
-                    "reason_code": "models_ready",
-                    "checks": {
-                        "selected_models_probe": {
-                            "status": "ok",
-                            "reason_code": "models_ready",
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_dir = Path(tmp) / ".codex"
+            codex_dir.mkdir()
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {
+                    "demo": {
+                        "codex": {
+                            "base_url": "https://relay.example/v1",
+                            "token": ccsw.env_ref("DEMO_CODEX_TOKEN"),
                         }
-                    },
-                    "mismatch_fields": [],
+                    }
                 },
-            ),
-        ):
-            status, detail = ccsw._probe_tool_health(
-                store,
-                "codex",
-                "demo",
-                store["providers"]["demo"]["codex"],
-            )
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.dict(os.environ, {"DEMO_CODEX_TOKEN": "demo-token"}, clear=False), patch(
+                "ccsw._probe_codex_target",
+                return_value=(
+                    "ok",
+                    {
+                        "reason_code": "models_ready",
+                        "checks": {
+                            "selected_models_probe": {
+                                "status": "ok",
+                                "reason_code": "models_ready",
+                            }
+                        },
+                        "mismatch_fields": [],
+                    },
+                ),
+            ):
+                status, detail = ccsw._probe_tool_health(
+                    store,
+                    "codex",
+                    "demo",
+                    store["providers"]["demo"]["codex"],
+                )
 
         self.assertEqual(status, "ok")
         self.assertIn("path_check", detail["checks"])
@@ -5838,6 +5841,8 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
             root = Path(tmp)
             db_path = root / "ccswitch.db"
             providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir()
             store = {
                 "version": 2,
                 "active": {"claude": None, "codex": "demo", "gemini": None, "opencode": None, "openclaw": None},
@@ -5851,7 +5856,7 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
                     }
                 },
                 "profiles": {},
-                "settings": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
             }
 
             with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
@@ -5889,6 +5894,8 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
             root = Path(tmp)
             db_path = root / "ccswitch.db"
             providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir()
             store = {
                 "version": 2,
                 "active": {"claude": None, "codex": "demo", "gemini": None, "opencode": None, "openclaw": None},
@@ -5902,7 +5909,7 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
                     }
                 },
                 "profiles": {},
-                "settings": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
             }
 
             with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
@@ -5942,6 +5949,8 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
             root = Path(tmp)
             db_path = root / "ccswitch.db"
             providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir()
             store = {
                 "version": 2,
                 "active": {"claude": None, "codex": "demo", "gemini": None, "opencode": None, "openclaw": None},
@@ -5955,7 +5964,7 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
                     }
                 },
                 "profiles": {},
-                "settings": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
             }
 
             with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
@@ -6173,7 +6182,10 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
                 with patch(
                     "ccsw.activate_tool_for_subprocess",
                     side_effect=[({"A": "1"}, []), SystemExit(1)],
-                ), patch("ccsw._restore_owned_path_state", return_value=["/tmp/conflict"]):
+                ), patch("ccsw._restore_owned_path_state", return_value=["/tmp/conflict"]), patch(
+                    "ccsw._safe_local_restore_validation",
+                    return_value={"status": "ok", "reason_code": "ready"},
+                ):
                     with self.assertRaises(SystemExit):
                         ccsw.cmd_switch(ccsw.load_store(), "all", "demo")
                 reloaded = ccsw.load_store()

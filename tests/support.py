@@ -8,7 +8,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from socketserver import TCPServer
-from typing import Iterator, Sequence
+from typing import Iterator, Optional, Sequence
 from unittest.mock import patch
 
 MANAGED_ENV_EXPORTS = {
@@ -53,7 +53,7 @@ def isolated_runtime_env(*, clear: bool = False) -> Iterator[dict[str, Path]]:
             }
 
 
-def build_cli_env(paths: dict[str, Path], extra_env: dict[str, str] | None = None) -> dict[str, str]:
+def build_cli_env(paths: dict[str, Path], extra_env: Optional[dict[str, str]] = None) -> dict[str, str]:
     """Build a subprocess-friendly environment for isolated CLI smoke tests."""
     env = os.environ.copy()
     for key in MANAGED_ENV_EXPORTS:

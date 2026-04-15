@@ -1,9 +1,11 @@
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 from tests.support import add_provider, build_cli_env, isolated_runtime_env, run_shell, stub_server
 
@@ -11,6 +13,10 @@ from tests.support import add_provider, build_cli_env, isolated_runtime_env, run
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BOOTSTRAP = REPO_ROOT / "bootstrap.sh"
 CCSW_PY = REPO_ROOT / "ccsw.py"
+BASH_SHELL = shutil.which("bash") or "/bin/bash"
+ZSH_SHELL = shutil.which("zsh")
+DETECTED_ZSH_SHELL = ZSH_SHELL or "/bin/zsh"
+REAL_WRAPPER_SHELLS = tuple(shell for shell in (BASH_SHELL, ZSH_SHELL) if shell)
 
 
 class BootstrapScriptTests(unittest.TestCase):
@@ -19,8 +25,8 @@ class BootstrapScriptTests(unittest.TestCase):
         root: Path,
         bootstrap_home: Path,
         *,
-        shell: str = "/bin/zsh",
-        rc_file: Path | None = None,
+        shell: str = DETECTED_ZSH_SHELL,
+        rc_file: Optional[Path] = None,
     ) -> dict[str, str]:
         env = os.environ.copy()
         env.update(
@@ -161,7 +167,7 @@ class BootstrapScriptTests(unittest.TestCase):
             root = Path(tmp)
             bootstrap_home = root / "bootstrap-home"
             zshrc = root / ".zshrc"
-            env = self._make_env(root, bootstrap_home, shell="/bin/zsh")
+            env = self._make_env(root, bootstrap_home, shell=DETECTED_ZSH_SHELL)
 
             result = self._run_bootstrap(env)
 
@@ -175,7 +181,7 @@ class BootstrapScriptTests(unittest.TestCase):
             root = Path(tmp)
             bootstrap_home = root / "bootstrap-home"
             explicit_rc = root / ".custom-rc"
-            env = self._make_env(root, bootstrap_home, shell="/bin/zsh", rc_file=explicit_rc)
+            env = self._make_env(root, bootstrap_home, shell=DETECTED_ZSH_SHELL, rc_file=explicit_rc)
 
             result = self._run_bootstrap(env)
 
@@ -224,7 +230,7 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertEqual(result.stdout, "")
 
     def test_source_rc_rehydrates_generated_env_files_in_bash_and_zsh(self) -> None:
-        for shell in ("/bin/bash", "/bin/zsh"):
+        for shell in REAL_WRAPPER_SHELLS:
             with self.subTest(shell=shell), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 bootstrap_home = root / "bootstrap-home"
@@ -332,7 +338,7 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertFalse((root / ".bashrc").exists())
 
     def test_shell_wrappers_apply_expected_dispatch_contract(self) -> None:
-        for shell in ("/bin/bash", "/bin/zsh"):
+        for shell in REAL_WRAPPER_SHELLS:
             with self.subTest(shell=shell), stub_server() as base_url, isolated_runtime_env() as paths:
                 env = build_cli_env(
                     paths,
@@ -435,7 +441,7 @@ class BootstrapScriptTests(unittest.TestCase):
                 self.assertEqual(passthrough.stdout, "")
 
     def test_shell_wrappers_cover_gcsw_opsw_clawsw_and_passthrough_commands(self) -> None:
-        for shell in ("/bin/bash", "/bin/zsh"):
+        for shell in REAL_WRAPPER_SHELLS:
             with self.subTest(shell=shell), stub_server() as base_url, isolated_runtime_env() as paths:
                 env = build_cli_env(
                     paths,

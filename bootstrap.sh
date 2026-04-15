@@ -29,32 +29,22 @@ note_action() {
 }
 
 # Detect rc file
+ENV_SHELL="$(printenv SHELL 2>/dev/null || true)"
+CURRENT_SHELL="$(ps -p $$ -o comm= 2>/dev/null || echo "")"
 if [[ -n "${BOOTSTRAP_RC_FILE:-}" ]]; then
     RC_FILE="$BOOTSTRAP_RC_FILE"
-elif [[ "${SHELL:-}" == */zsh ]]; then
+elif [[ "$ENV_SHELL" == */zsh ]]; then
     RC_FILE="$HOME/.zshrc"
-elif [[ "${SHELL:-}" == */bash ]]; then
+elif [[ "$ENV_SHELL" == */bash ]]; then
     RC_FILE="$HOME/.bashrc"
-elif [[ -z "${SHELL:-}" ]]; then
-    if [[ -f "$HOME/.zshrc" ]]; then
-        RC_FILE="$HOME/.zshrc"
-    elif [[ -f "$HOME/.bashrc" ]]; then
-        RC_FILE="$HOME/.bashrc"
-    else
-        CURRENT_SHELL="$(ps -p $$ -o comm= 2>/dev/null || echo "")"
-        if [[ "$CURRENT_SHELL" == *zsh* ]]; then
-            RC_FILE="$HOME/.zshrc"
-        else
-            RC_FILE="$HOME/.bashrc"
-        fi
-    fi
+elif [[ -f "$HOME/.zshrc" ]]; then
+    RC_FILE="$HOME/.zshrc"
+elif [[ -f "$HOME/.bashrc" ]]; then
+    RC_FILE="$HOME/.bashrc"
+elif [[ "$CURRENT_SHELL" == *zsh* ]]; then
+    RC_FILE="$HOME/.zshrc"
 else
-    CURRENT_SHELL="$(ps -p $$ -o comm= 2>/dev/null || echo "")"
-    if [[ "$CURRENT_SHELL" == *zsh* ]]; then
-        RC_FILE="$HOME/.zshrc"
-    else
-        RC_FILE="$HOME/.bashrc"
-    fi
+    RC_FILE="$HOME/.bashrc"
 fi
 
 # Verify ccsw.py exists

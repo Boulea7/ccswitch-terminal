@@ -9,6 +9,14 @@ Please report issues related to:
 - runtime lease / restore behavior that can corrupt live config
 - unintended credential exposure in history, probe cache, generated files, or activation env files
 
+## Supported Versions
+
+Security fixes are handled on the newest public release line first.
+
+- `main`: best-effort triage for issues not yet released
+- latest tagged release: fully supported for security fixes and coordinated disclosure
+- older tags: may be asked to upgrade first before a fix is confirmed or backported
+
 ## Private Reporting Path
 
 Do **not** open a public issue for an active vulnerability or a report that contains sensitive material.
@@ -33,6 +41,12 @@ Include:
 - sanitized logs, screenshots, or temp-home artifacts
 - whether the issue requires a managed CLI to already be installed
 
+Please do not send:
+
+- real API keys, tokens, cookies, or `.env` contents
+- absolute local paths, usernames, hostnames, or workstation-specific directory layouts
+- live provider configs copied directly from your machine without redaction
+
 If you report by email, include `[security]` in the subject line and provide the same sanitized reproduction details listed below.
 
 If private advisories are unavailable from your account and email is not possible, open a public issue with sensitive details removed and explicitly say that a private security follow-up is needed.
@@ -50,5 +64,7 @@ These are response targets, not guarantees of a fixed release date.
 ## Safe Disclosure Notes
 
 - Never include real API keys, tokens, cookies, session exports, or auth-bearing URLs in reports.
+- Never include absolute local paths such as `/Users/...`, machine names, or usernames unless they are essential to reproduce the issue.
 - Prefer reproductions that use temp directories, fake homes, and test tokens.
 - If the issue depends on generated `~/.ccswitch/*.env` files, describe the shell and whether it is POSIX-compatible.
+- If you must attach config examples, replace provider names, relay domains, and file paths with placeholders before sending them.

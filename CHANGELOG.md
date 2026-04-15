@@ -32,11 +32,13 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ### Fixed
 
+- Fixed bootstrap rc-file detection so installs prefer externally exported `SHELL` values and existing rc files instead of inferring from the bootstrap script's own shell process.
 - Fixed stale-lease handling so unfinished or conflicting runtime scenes fail closed and can be repaired explicitly instead of being overwritten by later `run` calls.
 - Fixed restore handling so post-restore local validation failures keep the stale lease and runtime artifacts available for `repair`.
 - Fixed history/probe redaction to cover more auth-bearing fields and compact CLI credential forms such as `-uuser:pass`.
 - Fixed snapshot/manifest decode failures so they scrub legacy inline snapshot payloads without leaving raw secret-bearing blobs around indefinitely.
 - Fixed settings persistence for stores that only contain settings metadata after bundled preset removal.
+- Fixed release test portability so shell/bootstrap coverage no longer assumes `/bin/zsh`, and Python 3.9 CI can import the shared test helpers again.
 - Removed public contributor guidance that treated private assistant notes as part of the required external contribution flow.
 - Replaced shell-detection examples with `command -v ...` in public docs.
 - Reworded provider coverage examples so they describe a subset of supported tools instead of an arbitrary count.
