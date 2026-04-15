@@ -26,6 +26,7 @@ import base64
 import contextlib
 import hashlib
 import json
+import io
 import os
 import re
 import shutil
@@ -1430,18 +1431,29 @@ def _sanitize_probe_detail(value: Any) -> Any:
 def info(msg: str) -> None:
     """Print status message to stderr (never captured by eval)."""
     safe_msg = _redact_sensitive_text(msg)
-    sys.stderr.write(f"{safe_msg}\n")
+    _write_stream_line(sys.stderr, safe_msg)
+
+
+def _write_stream_line(stream: Any, text: str) -> None:
+    """Write one text line to a stream, preserving TTY semantics when possible."""
+    payload = f"{text}\n"
+    try:
+        fileno = stream.fileno()
+    except (AttributeError, io.UnsupportedOperation, OSError):
+        stream.write(payload)
+        return
+    os.write(fileno, payload.encode("utf-8", errors="replace"))
 
 
 def emit_env(key: str, val: str) -> None:
     """Emit shell export statement to stdout for eval consumption."""
     escaped = val.replace("'", "'\\''")
-    sys.stdout.write(f"export {key}='{escaped}'\n")
+    _write_stream_line(sys.stdout, f"export {key}='{escaped}'")
 
 
 def emit_unset(key: str) -> None:
     """Emit shell unset statement to stdout for eval consumption."""
-    sys.stdout.write(f"unset {key}\n")
+    _write_stream_line(sys.stdout, f"unset {key}")
 
 
 def save_text(path: Path, content: str) -> None:
@@ -6794,7 +6806,8 @@ def cmd_doctor(
             probe_mode=detail.get("probe_mode", "deep" if deep else "safe"),
         )
         if json_output:
-            sys.stdout.write(_redact_sensitive_text(json.dumps(payload, ensure_ascii=False)) + "\n")
+            line = _redact_sensitive_text(json.dumps(payload, ensure_ascii=False))
+            _write_stream_line(sys.stdout, line)
         else:
             summary = payload["summary_reason"]
             info(f"[{current_tool}] {candidate} -> {status} ({summary})")

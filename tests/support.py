@@ -11,16 +11,9 @@ from socketserver import TCPServer
 from typing import Iterator, Optional, Sequence
 from unittest.mock import patch
 
-MANAGED_ENV_EXPORTS = {
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_BASE_URL",
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
-    "GEMINI_API_KEY",
-    "OPENCODE_CONFIG",
-    "OPENCLAW_CONFIG_PATH",
-    "OPENCLAW_PROFILE",
-}
+import ccsw
+
+MANAGED_ENV_EXPORTS = set(ccsw.MANAGED_CHILD_ENV_KEYS)
 
 
 @contextmanager

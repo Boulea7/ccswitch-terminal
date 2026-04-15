@@ -38,7 +38,7 @@ python3 -m unittest discover -s tests -q
 python3 -m unittest -q tests.test_bootstrap tests.test_cli_smoke
 ```
 
-7. Make sure GitHub Actions is green on the branch that will merge to `main`.
+7. Make sure GitHub Actions and CodeQL are green on the branch that will merge to `main`.
 
 ## Docs Consistency Check
 
@@ -46,7 +46,7 @@ The repository CI includes a lightweight docs check. Before tagging, either let 
 
 ## Tagging And Publishing
 
-After the release commit is on `main`:
+After the release commit is on `main`, and the same commit range is green on `main` CI / CodeQL:
 
 1. Choose the next version tag, for example `v0.1.0`.
 2. Move the `CHANGELOG.md` contents you are shipping into a versioned section, or copy the relevant `Unreleased` notes into the GitHub Release body if you prefer to keep a rolling unreleased section.

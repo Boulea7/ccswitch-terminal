@@ -621,7 +621,7 @@ flowchart LR
 ```bash
 ssh user@server
 # 进入远程 shell 后：
-eval "$(ccsw all openrouter)"
+ccsw all openrouter
 ```
 
 **Docker 容器**

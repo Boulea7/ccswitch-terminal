@@ -621,7 +621,7 @@ Primary state lives in `~/.ccswitch/ccswitch.db`, with a compatibility snapshot 
 ```bash
 ssh user@server
 # Once in the remote shell:
-eval "$(ccsw all openrouter)"
+ccsw all openrouter
 ```
 
 **Docker Container**
