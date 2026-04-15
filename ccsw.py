@@ -1440,7 +1440,7 @@ def _write_stream_line(stream: Any, text: str) -> None:
     try:
         fileno = stream.fileno()
     except (AttributeError, io.UnsupportedOperation, OSError):
-        stream.write(payload)
+        stream.writelines((payload,))
         return
     os.write(fileno, payload.encode("utf-8", errors="replace"))
 
