@@ -2034,6 +2034,11 @@ def save_store(
             _insert_history_entries(conn, history_entries)
         conn.commit()
         store["_revision"] = next_revision
+    except sqlite3.OperationalError as exc:
+        conn.rollback()
+        if "database is locked" in str(exc).lower():
+            raise StoreConflictError("store database is locked by another writer") from exc
+        raise
     except Exception:
         conn.rollback()
         raise
