@@ -1569,7 +1569,12 @@ def _http_probe(
                 detail["sample"] = payload.decode("utf-8", errors="replace")
             return response.status, detail
     except urllib_error.HTTPError as exc:
-        payload = exc.read(256)
+        payload = b""
+        if getattr(exc, "fp", None) is not None:
+            try:
+                payload = exc.read(256)
+            except (OSError, ValueError, TypeError, AttributeError, KeyError):
+                payload = b""
         detail = {"status": exc.code, "reason": exc.reason}
         if payload:
             detail["sample"] = payload.decode("utf-8", errors="replace")

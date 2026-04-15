@@ -14,7 +14,7 @@ from io import StringIO
 from argparse import Namespace
 from pathlib import Path
 from urllib.error import HTTPError
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import ccsw
 from tests.support import build_cli_env, isolated_runtime_env
@@ -3324,6 +3324,23 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
 
         self.assertEqual(status, "failed")
         self.assertEqual(detail["status"], 401)
+
+    def test_generic_url_probe_handles_http_error_without_readable_body(self) -> None:
+        http_error = HTTPError(
+            url="https://example.com",
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=None,
+        )
+        http_error.read = Mock(side_effect=KeyError("file"))
+
+        with patch("ccsw.urllib_request.urlopen", side_effect=http_error):
+            status, detail = ccsw._generic_url_probe("https://example.com")
+
+        self.assertEqual(status, "failed")
+        self.assertEqual(detail["status"], 401)
+        self.assertNotIn("sample", detail)
 
     def test_list_history_filters_action_before_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
