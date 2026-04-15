@@ -1,0 +1,44 @@
+name: Support question
+description: Ask for usage help when the behavior is unclear but you do not yet have a confirmed bug.
+title: "[Support] "
+labels:
+  - support
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove real tokens, auth-bearing URLs, and any other secrets before submitting.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What are you trying to do?
+      description: Describe the workflow first, then the command you expected to use.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, shell, Python version, and any relevant managed CLI versions.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Relevant command or config
+      description: Paste the command, snippet, or doc section you are following.
+      render: shell
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened instead?
+      description: Include sanitized stdout/stderr if helpful.
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: I checked the README / SUPPORT guide first.
+          required: true
+        - label: I removed secrets and private credentials from this report.
+          required: true

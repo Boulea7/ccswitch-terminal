@@ -1,0 +1,90 @@
+name: Bug report
+description: Report a reproducible problem in switching, doctor, run, rollback, repair, or bootstrap behavior.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove real tokens, auth-bearing URLs, and any other secrets before submitting.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the problem.
+      placeholder: `ccsw doctor codex` reports `config_mismatch` after a successful switch
+    validations:
+      required: true
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: Affected area
+      options:
+        - bootstrap / shell wrapper
+        - claude
+        - codex
+        - gemini
+        - opencode
+        - openclaw
+        - profile / settings / import
+        - doctor / history
+        - rollback / repair / run
+        - docs / automation
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, shell, Python version, and any relevant managed CLI versions.
+      placeholder: |
+        macOS 15.4
+        zsh
+        Python 3.11
+        codex-cli 0.116.x
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: Paste the exact command you ran.
+      placeholder: |
+        ccsw doctor codex openrouter --deep
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Minimal sanitized steps that let someone else reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include stderr/stdout snippets, `doctor --json`, or other evidence with secrets removed.
+      render: shell
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: I removed secrets and private credentials from this report.
+          required: true
+        - label: I checked whether the issue reproduces in a temp home or after `bash bootstrap.sh --dry-run` when relevant.
+          required: false

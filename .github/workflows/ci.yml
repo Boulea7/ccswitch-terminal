@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feat/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs Consistency
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check release-facing docs surface
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docs=(
+            README.md
+            README_EN.md
+            README_ES.md
+            README_PT.md
+            README_RU.md
+            README_JA.md
+            CHANGELOG.md
+            RELEASING.md
+            CONTRIBUTING.md
+            SUPPORT.md
+            SECURITY.md
+            .github/pull_request_template.md
+          )
+
+          banned='AGENTS\.md|CLAUDE\.md|type ccsw|type cxsw|type gcsw|1-2 tools|1 or 2 tools'
+          for f in "${docs[@]}"; do
+            if grep -nE "$banned" "$f"; then
+              echo "Found banned docs wording in $f" >&2
+              exit 1
+            fi
+          done
+
+          grep -q 'CHANGELOG.md' README.md
+          grep -q 'RELEASING.md' README.md
+          grep -q 'CHANGELOG.md' README_EN.md
+          grep -q 'RELEASING.md' README_EN.md
+
+          for f in README_ES.md README_PT.md README_RU.md README_JA.md; do
+            grep -q 'README_EN.md' "$f"
+            grep -q 'CHANGELOG.md' "$f"
+            grep -q 'RELEASING.md' "$f"
+            grep -q 'SUPPORT.md' "$f"
+            grep -q 'CONTRIBUTING.md' "$f"
+            grep -q 'SECURITY.md' "$f"
+          done
+
+      - name: Check workflow branch wording
+        shell: bash
+        run: |
+          set -euo pipefail
+          legacy_branch='mas''ter'
+          if grep -RInE "\\b${legacy_branch}\\b" .github/workflows; then
+            echo "Found unexpected legacy branch wording in workflows" >&2
+            exit 1
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: docs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: "."
+
+      - name: actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          shellcheck: false
+          pyflakes: false
+
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        python-version:
+          - "3.9"
+          - "3.11"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Bootstrap dry-run
+        run: bash bootstrap.sh --dry-run
+
+      - name: CLI help
+        run: python3 ccsw.py -h
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -q
