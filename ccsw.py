@@ -1440,10 +1440,10 @@ def _write_stream_line(stream: Any, text: str) -> None:
     try:
         fileno = stream.fileno()
     except (AttributeError, io.UnsupportedOperation, OSError):
-        write_method = getattr(type(stream), "write", None)
+        write_method = getattr(stream, "write", None)
         if not callable(write_method):
             raise
-        write_method(stream, payload)
+        write_method.__call__(payload)
         return
     encoded = payload.encode("utf-8", errors="replace")
     view = memoryview(encoded)
