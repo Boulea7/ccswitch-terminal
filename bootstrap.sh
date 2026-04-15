@@ -171,14 +171,6 @@ legacy_patterns = [
     re.compile(r'(?m)^opsw\(\) \{.*\}\n?'),
     re.compile(r'(?m)^clawsw\(\) \{.*\}\n?'),
     re.compile(r'(?m)^ccswitch\(\) \{.*\}\n?'),
-    re.compile(r'(?m)^# ccsw - load active Gemini API key\n?'),
-    re.compile(r'(?m)^# ccsw - load active Codex API key and clear legacy base URL env\n?'),
-    re.compile(r'(?m)^# ccsw - load active OpenCode overlay\n?'),
-    re.compile(r'(?m)^# ccsw - load active OpenClaw overlay\n?'),
-    re.compile(r'(?m)^#? ?\[ -f ".*?/active\.env" \] && source ".*?/active\.env"\n?'),
-    re.compile(r'(?m)^#? ?\[ -f ".*?/codex\.env" \] && source ".*?/codex\.env"\n?'),
-    re.compile(r'(?m)^#? ?\[ -f ".*?/opencode\.env" \] && source ".*?/opencode\.env"\n?'),
-    re.compile(r'(?m)^#? ?\[ -f ".*?/openclaw\.env" \] && source ".*?/openclaw\.env"\n?'),
 ]
 starts = []
 if any(pattern.search(existing) for pattern in legacy_patterns):
@@ -197,19 +189,44 @@ def compose(before: str, block_value: str, after: str) -> str:
     return "\n\n".join(parts) + "\n"
 
 def strip_legacy_env_lines(text: str) -> str:
+    managed_env_line = re.compile(
+        r'^\s*#?\s*\[ -f "(?P<dir>.*?/\.ccswitch)/(?P<name>active|codex|opencode|openclaw)\.env" \] && source "(?P=dir)/(?P=name)\.env"\s*$'
+    )
+    legacy_block_layout = [
+        ("# ccsw - load active Gemini API key", "active"),
+        ("# ccsw - load active Codex API key and clear legacy base URL env", "codex"),
+        ("# ccsw - load active OpenCode overlay", "opencode"),
+        ("# ccsw - load active OpenClaw overlay", "openclaw"),
+    ]
+
+    lines = text.splitlines()
     cleaned_lines = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped in {
-            "# ccsw - load active Gemini API key",
-            "# ccsw - load active Codex API key and clear legacy base URL env",
-            "# ccsw - load active OpenCode overlay",
-            "# ccsw - load active OpenClaw overlay",
-        }:
+    idx = 0
+    while idx < len(lines):
+        matched_block = False
+        if idx + (len(legacy_block_layout) * 2) <= len(lines):
+            block_dir = None
+            block_ok = True
+            for offset, (comment_text, env_name) in enumerate(legacy_block_layout):
+                comment_line = lines[idx + (offset * 2)].strip()
+                env_line = lines[idx + (offset * 2) + 1]
+                env_match = managed_env_line.match(env_line)
+                if comment_line != comment_text or env_match is None or env_match.group("name") != env_name:
+                    block_ok = False
+                    break
+                env_dir = env_match.group("dir")
+                if block_dir is None:
+                    block_dir = env_dir
+                elif env_dir != block_dir:
+                    block_ok = False
+                    break
+            if block_ok:
+                idx += len(legacy_block_layout) * 2
+                matched_block = True
+        if matched_block:
             continue
-        if any(token in line for token in ("active.env", "codex.env", "opencode.env", "openclaw.env")) and "source" in line:
-            continue
-        cleaned_lines.append(line)
+        cleaned_lines.append(lines[idx])
+        idx += 1
     cleaned = "\n".join(cleaned_lines)
     if text.endswith("\n"):
         cleaned += "\n"

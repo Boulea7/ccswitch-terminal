@@ -74,7 +74,7 @@ bash ~/ccsw/bootstrap.sh --dry-run
 
 复制以下提示词，替换 `<...>` 占位符后直接发送：
 
-```
+```text
 请帮我安装 ccswitch (AI 终端工具 API 切换器)：
 
 仓库：https://github.com/Boulea7/ccswitch-terminal
@@ -96,7 +96,7 @@ token 明文写入 ~/ccsw/.env.local，providers.json 中用 $ENV_VAR 引用。
 <details>
 <summary>示例：以自定义 Provider 为例的已填写版本</summary>
 
-```
+```text
 请帮我安装 ccswitch (AI 终端工具 API 切换器)：
 
 仓库：https://github.com/Boulea7/ccswitch-terminal
@@ -115,6 +115,7 @@ token 明文写入 ~/ccsw/.env.local，providers.json 中用 $ENV_VAR 引用。
 最后运行 python3 ~/ccsw/ccsw.py list 和 python3 ~/ccsw/ccsw.py show 确认。
 ```
 
+</details>
 </details>
 
 ---
@@ -647,7 +648,7 @@ docker exec -it mycontainer bash -c \
     MY_PROVIDER_CODEX_TOKEN: ${{ secrets.MY_PROVIDER_CODEX_TOKEN }}
   run: |
     python3 ccsw.py claude openrouter
-    python3 ccsw.py codex openrouter
+    eval "$(python3 ccsw.py codex openrouter)"
 ```
 
 </details>

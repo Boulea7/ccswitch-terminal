@@ -283,11 +283,13 @@ class BootstrapScriptTests(unittest.TestCase):
             rc_file.write_text(
                 "\n".join(
                     [
-                        "# legacy source lines",
+                        "# ccsw - load active Gemini API key",
                         f'[ -f "{old_ccswitch_dir / "active.env"}" ] && source "{old_ccswitch_dir / "active.env"}"',
-                        f'[ -f "{old_ccswitch_dir / "active.env"}" ] && source "{old_ccswitch_dir / "active.env"}"',
+                        "# ccsw - load active Codex API key and clear legacy base URL env",
                         f'# [ -f "{old_ccswitch_dir / "codex.env"}" ] && source "{old_ccswitch_dir / "codex.env"}"',
+                        "# ccsw - load active OpenCode overlay",
                         f'# [ -f "{old_ccswitch_dir / "opencode.env"}" ] && source "{old_ccswitch_dir / "opencode.env"}"',
+                        "# ccsw - load active OpenClaw overlay",
                         f'# [ -f "{old_ccswitch_dir / "openclaw.env"}" ] && source "{old_ccswitch_dir / "openclaw.env"}"',
                         "",
                     ]
@@ -321,6 +323,137 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertNotIn(str(old_ccswitch_dir / "codex.env"), rc_content)
             self.assertNotIn(str(old_ccswitch_dir / "opencode.env"), rc_content)
             self.assertNotIn(str(old_ccswitch_dir / "openclaw.env"), rc_content)
+
+    def test_bootstrap_preserves_non_ccswitch_source_lines_with_generic_env_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bootstrap_home = root / "bootstrap-home"
+            old_home = root / "old-bootstrap-home"
+            old_ccswitch_dir = old_home / ".ccswitch"
+            custom_env_dir = root / "custom-envs"
+            unrelated_active = custom_env_dir / "active.env"
+            unrelated_codex = custom_env_dir / "codex.env"
+            rc_file = root / ".testrc"
+            unrelated_active_line = f'[ -f "{unrelated_active}" ] && source "{unrelated_active}"'
+            unrelated_codex_line = f'[ -f "{unrelated_codex}" ] && source "{unrelated_codex}"'
+            rc_file.write_text(
+                "\n".join(
+                    [
+                        "# existing rc",
+                        unrelated_active_line,
+                        unrelated_codex_line,
+                        "# ccsw - load active Gemini API key",
+                        f'[ -f "{old_ccswitch_dir / "active.env"}" ] && source "{old_ccswitch_dir / "active.env"}"',
+                        "# ccsw - load active Codex API key and clear legacy base URL env",
+                        f'[ -f "{old_ccswitch_dir / "codex.env"}" ] && source "{old_ccswitch_dir / "codex.env"}"',
+                        "# ccsw - load active OpenCode overlay",
+                        f'[ -f "{old_ccswitch_dir / "opencode.env"}" ] && source "{old_ccswitch_dir / "opencode.env"}"',
+                        "# ccsw - load active OpenClaw overlay",
+                        f'[ -f "{old_ccswitch_dir / "openclaw.env"}" ] && source "{old_ccswitch_dir / "openclaw.env"}"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = self._make_env(root, bootstrap_home, rc_file=rc_file)
+
+            self._run_bootstrap(env)
+            rc_content = rc_file.read_text(encoding="utf-8")
+
+            self.assertIn(unrelated_active_line, rc_content)
+            self.assertIn(unrelated_codex_line, rc_content)
+            self.assertNotIn(str(old_ccswitch_dir / "active.env"), rc_content)
+            self.assertNotIn(str(old_ccswitch_dir / "codex.env"), rc_content)
+            self.assertNotIn(str(old_ccswitch_dir / "opencode.env"), rc_content)
+            self.assertNotIn(str(old_ccswitch_dir / "openclaw.env"), rc_content)
+
+    def test_bootstrap_preserves_foreign_dot_ccswitch_source_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bootstrap_home = root / "bootstrap-home"
+            foreign_ccswitch_dir = root / "foreign" / ".ccswitch"
+            rc_file = root / ".testrc"
+            foreign_active_line = (
+                f'[ -f "{foreign_ccswitch_dir / "active.env"}" ] && '
+                f'source "{foreign_ccswitch_dir / "active.env"}"'
+            )
+            rc_file.write_text(
+                "\n".join(
+                    [
+                        "# existing rc",
+                        foreign_active_line,
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = self._make_env(root, bootstrap_home, rc_file=rc_file)
+
+            self._run_bootstrap(env)
+            rc_content = rc_file.read_text(encoding="utf-8")
+
+            self.assertIn(foreign_active_line, rc_content)
+
+    def test_bootstrap_preserves_multiple_foreign_dot_ccswitch_source_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bootstrap_home = root / "bootstrap-home"
+            foreign_ccswitch_dir = root / "foreign" / ".ccswitch"
+            rc_file = root / ".testrc"
+            foreign_active_line = (
+                f'[ -f "{foreign_ccswitch_dir / "active.env"}" ] && '
+                f'source "{foreign_ccswitch_dir / "active.env"}"'
+            )
+            foreign_codex_line = (
+                f'[ -f "{foreign_ccswitch_dir / "codex.env"}" ] && '
+                f'source "{foreign_ccswitch_dir / "codex.env"}"'
+            )
+            rc_file.write_text(
+                "\n".join(
+                    [
+                        "# existing rc",
+                        foreign_active_line,
+                        foreign_codex_line,
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = self._make_env(root, bootstrap_home, rc_file=rc_file)
+
+            self._run_bootstrap(env)
+            rc_content = rc_file.read_text(encoding="utf-8")
+
+            self.assertIn(foreign_active_line, rc_content)
+            self.assertIn(foreign_codex_line, rc_content)
+
+    def test_bootstrap_preserves_foreign_dot_ccswitch_line_after_legacy_comment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bootstrap_home = root / "bootstrap-home"
+            foreign_ccswitch_dir = root / "foreign" / ".ccswitch"
+            rc_file = root / ".testrc"
+            foreign_active_line = (
+                f'[ -f "{foreign_ccswitch_dir / "active.env"}" ] && '
+                f'source "{foreign_ccswitch_dir / "active.env"}"'
+            )
+            rc_file.write_text(
+                "\n".join(
+                    [
+                        "# existing rc",
+                        "# ccsw - load active Gemini API key",
+                        foreign_active_line,
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = self._make_env(root, bootstrap_home, rc_file=rc_file)
+
+            self._run_bootstrap(env)
+            rc_content = rc_file.read_text(encoding="utf-8")
+
+            self.assertIn(foreign_active_line, rc_content)
 
     def test_bootstrap_prefers_existing_zshrc_when_shell_is_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

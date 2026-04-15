@@ -74,7 +74,7 @@ If you later want to remove the bootstrap integration, delete the managed block 
 
 Copy the prompt below, fill in the `<...>` placeholders, and send it directly:
 
-```
+```text
 Please install ccswitch (AI terminal tool API switcher):
 
 Repo: https://github.com/Boulea7/ccswitch-terminal
@@ -96,7 +96,7 @@ Finally run python3 ~/ccsw/ccsw.py list and python3 ~/ccsw/ccsw.py show to confi
 <details>
 <summary>Example: pre-filled version using a custom provider</summary>
 
-```
+```text
 Please install ccswitch (AI terminal tool API switcher):
 
 Repo: https://github.com/Boulea7/ccswitch-terminal
@@ -115,6 +115,7 @@ Write tokens in plaintext to ~/ccsw/.env.local, reference them as $ENV_VAR in pr
 Finally run python3 ~/ccsw/ccsw.py list and python3 ~/ccsw/ccsw.py show to confirm.
 ```
 
+</details>
 </details>
 
 ---
@@ -647,7 +648,7 @@ docker exec -it mycontainer bash -c \
     MY_PROVIDER_CODEX_TOKEN: ${{ secrets.MY_PROVIDER_CODEX_TOKEN }}
   run: |
     python3 ccsw.py claude openrouter
-    python3 ccsw.py codex openrouter
+    eval "$(python3 ccsw.py codex openrouter)"
 ```
 
 </details>
