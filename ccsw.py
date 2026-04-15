@@ -1442,7 +1442,11 @@ def _write_stream_line(stream: Any, text: str) -> None:
     except (AttributeError, io.UnsupportedOperation, OSError):
         stream.writelines((payload,))
         return
-    os.write(fileno, payload.encode("utf-8", errors="replace"))
+    encoded = payload.encode("utf-8", errors="replace")
+    view = memoryview(encoded)
+    while view:
+        written = os.write(fileno, view)
+        view = view[written:]
 
 
 def emit_env(key: str, val: str) -> None:
