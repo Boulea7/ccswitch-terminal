@@ -918,15 +918,33 @@ def _pid_matches_identity(pid: Optional[int], started_at: Optional[str]) -> bool
     return current_started_at == started_at
 
 
+def _pid_cannot_be_verified_but_is_running(pid: Optional[int], started_at: Optional[str]) -> bool:
+    """Return True when a live PID cannot be safely ruled out as the recorded process."""
+    if not _pid_is_running(pid):
+        return False
+    if not started_at:
+        return True
+    return _pid_start_token(pid) is None
+
+
 def _managed_target_blocks_run(manifest: Optional[Dict[str, Any]]) -> bool:
     """Return True when the persisted lease still blocks new managed runs."""
     if not isinstance(manifest, dict):
         return False
     if manifest.get("decode_error"):
         return True
-    if _pid_matches_identity(manifest.get("child_pid"), manifest.get("child_started_at")):
+    if _pid_matches_identity(manifest.get("child_pid"), manifest.get("child_started_at")) or _pid_cannot_be_verified_but_is_running(
+        manifest.get("child_pid"),
+        manifest.get("child_started_at"),
+    ):
         return True
-    if _pid_matches_identity(manifest.get("owner_pid"), manifest.get("owner_started_at")) and not manifest.get("stale"):
+    if (
+        _pid_matches_identity(manifest.get("owner_pid"), manifest.get("owner_started_at"))
+        or _pid_cannot_be_verified_but_is_running(
+            manifest.get("owner_pid"),
+            manifest.get("owner_started_at"),
+        )
+    ) and not manifest.get("stale"):
         return True
     return _managed_target_needs_repair(manifest)
 
@@ -4553,7 +4571,12 @@ def _repair_runtime_lease(
         }
         record_history("repair-result", tool, scrubbed_manifest.get("selected_candidate"), payload)
         return payload
-    if _pid_matches_identity(manifest.get("child_pid"), manifest.get("child_started_at")):
+    child_pid = manifest.get("child_pid")
+    child_started_at = manifest.get("child_started_at")
+    if _pid_matches_identity(child_pid, child_started_at) or _pid_cannot_be_verified_but_is_running(
+        child_pid,
+        child_started_at,
+    ):
         payload = {
             "tool": tool,
             "lease_id": manifest.get("lease_id"),
@@ -4563,7 +4586,12 @@ def _repair_runtime_lease(
         }
         record_history("repair-result", tool, manifest.get("selected_candidate"), payload)
         return payload
-    if _pid_matches_identity(manifest.get("owner_pid"), manifest.get("owner_started_at")) and not manifest.get("stale"):
+    owner_pid = manifest.get("owner_pid")
+    owner_started_at = manifest.get("owner_started_at")
+    if (
+        _pid_matches_identity(owner_pid, owner_started_at)
+        or _pid_cannot_be_verified_but_is_running(owner_pid, owner_started_at)
+    ) and not manifest.get("stale"):
         payload = {
             "tool": tool,
             "lease_id": manifest.get("lease_id"),
@@ -5286,6 +5314,7 @@ def _clear_absent_import_fields(
 ) -> None:
     """Drop optional metadata that is no longer present in the live config."""
     optional_fields: Dict[str, tuple[str, ...]] = {
+        "gemini": ("auth_type",),
         "opencode": ("headers", "npm", "model"),
         "openclaw": ("api", "profile", "model"),
     }
@@ -6033,9 +6062,19 @@ def _runtime_lease_check(
         detail["status"] = "degraded"
         detail["reason_code"] = "dangling_runtime_dir"
         return "degraded", detail
-    if isinstance(child_pid, int) and child_pid > 0 and _pid_matches_identity(child_pid, manifest.get("child_started_at")):
+    if isinstance(child_pid, int) and child_pid > 0 and (
+        _pid_matches_identity(child_pid, manifest.get("child_started_at"))
+        or _pid_cannot_be_verified_but_is_running(child_pid, manifest.get("child_started_at"))
+    ):
         detail["status"] = "degraded"
         detail["reason_code"] = "runtime_child_running"
+        return "degraded", detail
+    if isinstance(owner_pid, int) and owner_pid > 0 and _pid_cannot_be_verified_but_is_running(
+        owner_pid,
+        manifest.get("owner_started_at"),
+    ):
+        detail["status"] = "degraded"
+        detail["reason_code"] = "runtime_busy"
         return "degraded", detail
     if phase in RUNTIME_BUSY_PHASES and isinstance(owner_pid, int) and owner_pid > 0 and not _pid_matches_identity(
         owner_pid,

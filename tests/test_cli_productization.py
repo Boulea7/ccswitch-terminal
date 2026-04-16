@@ -4085,6 +4085,44 @@ class SecretAndBatchBehaviorTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     ccsw.cmd_import_current(store, "gemini", "imported")
 
+    def test_import_current_gemini_clears_stale_auth_type_when_live_setting_is_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gemini_dir = root / ".gemini"
+            gemini_dir.mkdir(parents=True)
+            (gemini_dir / "settings.json").write_text(json.dumps({"security": {"auth": {}}}), encoding="utf-8")
+            active_env_path = root / ".ccswitch" / "active.env"
+            active_env_path.parent.mkdir(parents=True)
+            active_env_path.write_text(
+                "export GEMINI_API_KEY='demo-token'\n",
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {
+                    "imported": {
+                        "gemini": {
+                            "api_key": "$MATCHING_GEMINI_TOKEN",
+                            "auth_type": "oauth",
+                        }
+                    }
+                },
+                "profiles": {},
+                "settings": {"gemini_config_dir": str(gemini_dir)},
+            }
+
+            with patch.object(ccsw, "ACTIVE_ENV_PATH", active_env_path), patch.dict(
+                os.environ,
+                {"MATCHING_GEMINI_TOKEN": "demo-token"},
+                clear=False,
+            ), patch("ccsw.save_store"):
+                ccsw.cmd_import_current(store, "gemini", "imported")
+
+        self.assertEqual(store["providers"]["imported"]["gemini"]["api_key"], "$MATCHING_GEMINI_TOKEN")
+        self.assertNotIn("auth_type", store["providers"]["imported"]["gemini"])
+
     def test_write_opencode_rejects_non_allowlisted_headers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -5243,6 +5281,49 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
         self.assertEqual(detail["reason_code"], "stale_lease")
         self.assertEqual(detail["checks"]["runtime_lease_check"]["reason_code"], "stale_lease")
 
+    def test_runtime_lease_check_degrades_when_owner_pid_is_running_without_start_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            runtime_root = root / "tmp" / "run-active"
+            runtime_root.mkdir(parents=True)
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {},
+                "profiles": {},
+                "settings": {},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ):
+                ccsw.save_store(store)
+                ccsw.upsert_managed_target(
+                    "codex",
+                    {
+                        "tool": "codex",
+                        "lease_id": "lease-active-no-start-token",
+                        "requested_target": "demo",
+                        "selected_candidate": "demo",
+                        "owner_pid": os.getpid(),
+                        "child_pid": None,
+                        "phase": "completed",
+                        "runtime_root": str(runtime_root),
+                        "restore_status": "restore_failed",
+                        "cleanup_status": "pending",
+                        "stale": False,
+                    },
+                )
+                status, detail = ccsw._runtime_lease_check("codex", "demo")
+
+        self.assertEqual(status, "degraded")
+        self.assertEqual(detail["reason_code"], "runtime_busy")
+
     def test_doctor_ignores_stale_lease_for_other_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -5391,6 +5472,91 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
                 remaining = ccsw.get_managed_target("codex")
 
         self.assertEqual(remaining["lease_id"], "lease-active")
+
+    def test_repair_rejects_active_owner_without_start_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            original_bytes = json.dumps({"OPENAI_API_KEY": "original"}).encode("utf-8")
+            mutated_bytes = json.dumps({"OPENAI_API_KEY": "mutated"}).encode("utf-8")
+            auth_path.write_text(mutated_bytes.decode("utf-8"), encoding="utf-8")
+            runtime_root = root / "tmp" / "run-codex"
+            runtime_root.mkdir(parents=True)
+            store = {
+                "version": 2,
+                "active": {
+                    "claude": None,
+                    "codex": "demo",
+                    "gemini": None,
+                    "opencode": None,
+                    "openclaw": None,
+                },
+                "aliases": {},
+                "providers": {
+                    "demo": {
+                        "codex": {
+                            "base_url": "https://relay.example.com/v1",
+                            "token": "demo-token",
+                        }
+                    }
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ), patch(
+                "ccsw._safe_local_restore_validation",
+                return_value={"status": "ok", "reason_code": "ready"},
+            ):
+                ccsw.save_store(store)
+                ccsw.upsert_managed_target(
+                    "codex",
+                    {
+                        "tool": "codex",
+                        "lease_id": "lease-active-no-start-token",
+                        "requested_target": "demo",
+                        "selected_candidate": "demo",
+                        "owner_pid": os.getpid(),
+                        "child_pid": None,
+                        "child_status": "exited",
+                        "phase": "completed",
+                        "runtime_root": str(runtime_root),
+                        "restore_status": "restore_failed",
+                        "cleanup_status": "pending",
+                        "stale": False,
+                        "snapshots": {
+                            str(auth_path): {
+                                "exists": True,
+                                "sha256": sha256(original_bytes).hexdigest(),
+                                "content_b64": "eyJPUEVOQUlfQVBJX0tFWSI6ICJvcmlnaW5hbCJ9",
+                            }
+                        },
+                        "written_states": {
+                            str(auth_path): {
+                                "exists": True,
+                                "sha256": sha256(mutated_bytes).hexdigest(),
+                            }
+                        },
+                        "restore_groups": [[str(auth_path)]],
+                        "ephemeral_paths": [],
+                        "post_restore_validation": {"status": "pending", "reason_code": "pending"},
+                    },
+                )
+                with self.assertRaises(SystemExit):
+                    ccsw.cmd_repair(ccsw.load_store(), "codex")
+                remaining = ccsw.get_managed_target("codex")
+                still_mutated = json.loads(auth_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(still_mutated["OPENAI_API_KEY"], "mutated")
+        self.assertEqual(remaining["lease_id"], "lease-active-no-start-token")
 
     def test_repair_decode_error_records_manifest_decode_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
