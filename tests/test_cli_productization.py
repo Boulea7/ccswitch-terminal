@@ -5324,6 +5324,72 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
         self.assertEqual(status, "degraded")
         self.assertEqual(detail["reason_code"], "runtime_busy")
 
+    def test_doctor_cli_reports_running_child_without_start_token_from_persisted_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir()
+            runtime_root = root / "tmp" / "run-child-active"
+            runtime_root.mkdir(parents=True)
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "demo", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "demo": {
+                        "codex": {
+                            "base_url": "https://relay.example/v1",
+                            "token": ccsw.env_ref("DEMO_CODEX_TOKEN"),
+                        }
+                    }
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            output = StringIO()
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ), patch.dict(
+                os.environ,
+                {"DEMO_CODEX_TOKEN": "demo-token"},
+                clear=False,
+            ), patch(
+                "ccsw._probe_codex_target",
+                return_value=("ok", {"reason_code": "models_ready", "checks": {}, "mismatch_fields": []}),
+            ):
+                ccsw.save_store(store)
+                ccsw.upsert_managed_target(
+                    "codex",
+                    {
+                        "tool": "codex",
+                        "lease_id": "lease-active-child-no-start-token",
+                        "requested_target": "demo",
+                        "selected_candidate": "demo",
+                        "child_pid": os.getpid(),
+                        "child_status": "running",
+                        "phase": "subprocess",
+                        "runtime_root": str(runtime_root),
+                        "restore_status": "pending",
+                        "cleanup_status": "pending",
+                        "stale": False,
+                    },
+                )
+                with redirect_stdout(output):
+                    ok = ccsw.cmd_doctor(ccsw.load_store(), "codex", "demo", json_output=True)
+
+        self.assertFalse(ok)
+        payload = json.loads(output.getvalue().strip())
+        self.assertEqual(payload["status"], "degraded")
+        self.assertEqual(payload["summary_reason"], "runtime_child_running")
+        self.assertEqual(payload["checks"]["runtime_lease_check"]["reason_code"], "runtime_child_running")
+        self.assertTrue(payload["checks"]["runtime_lease_check"]["child_pid_running"])
+        self.assertFalse(payload["checks"]["runtime_lease_check"]["child_identity_match"])
+
     def test_doctor_ignores_stale_lease_for_other_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -5557,6 +5623,91 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
 
         self.assertEqual(still_mutated["OPENAI_API_KEY"], "mutated")
         self.assertEqual(remaining["lease_id"], "lease-active-no-start-token")
+
+    def test_repair_rejects_active_child_without_start_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            original_bytes = json.dumps({"OPENAI_API_KEY": "original"}).encode("utf-8")
+            mutated_bytes = json.dumps({"OPENAI_API_KEY": "mutated"}).encode("utf-8")
+            auth_path.write_text(mutated_bytes.decode("utf-8"), encoding="utf-8")
+            runtime_root = root / "tmp" / "run-codex-child"
+            runtime_root.mkdir(parents=True)
+            store = {
+                "version": 2,
+                "active": {
+                    "claude": None,
+                    "codex": "demo",
+                    "gemini": None,
+                    "opencode": None,
+                    "openclaw": None,
+                },
+                "aliases": {},
+                "providers": {
+                    "demo": {
+                        "codex": {
+                            "base_url": "https://relay.example.com/v1",
+                            "token": "demo-token",
+                        }
+                    }
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ), patch(
+                "ccsw._safe_local_restore_validation",
+                return_value={"status": "ok", "reason_code": "ready"},
+            ):
+                ccsw.save_store(store)
+                ccsw.upsert_managed_target(
+                    "codex",
+                    {
+                        "tool": "codex",
+                        "lease_id": "lease-active-child-no-start-token",
+                        "requested_target": "demo",
+                        "selected_candidate": "demo",
+                        "owner_pid": None,
+                        "child_pid": os.getpid(),
+                        "child_status": "running",
+                        "phase": "subprocess",
+                        "runtime_root": str(runtime_root),
+                        "restore_status": "pending",
+                        "cleanup_status": "pending",
+                        "stale": False,
+                        "snapshots": {
+                            str(auth_path): {
+                                "exists": True,
+                                "sha256": sha256(original_bytes).hexdigest(),
+                                "content_b64": "eyJPUEVOQUlfQVBJX0tFWSI6ICJvcmlnaW5hbCJ9",
+                            }
+                        },
+                        "written_states": {
+                            str(auth_path): {
+                                "exists": True,
+                                "sha256": sha256(mutated_bytes).hexdigest(),
+                            }
+                        },
+                        "restore_groups": [[str(auth_path)]],
+                        "ephemeral_paths": [],
+                        "post_restore_validation": {"status": "pending", "reason_code": "pending"},
+                    },
+                )
+                with self.assertRaises(SystemExit):
+                    ccsw.cmd_repair(ccsw.load_store(), "codex")
+                remaining = ccsw.get_managed_target("codex")
+                still_mutated = json.loads(auth_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(still_mutated["OPENAI_API_KEY"], "mutated")
+        self.assertEqual(remaining["lease_id"], "lease-active-child-no-start-token")
 
     def test_repair_decode_error_records_manifest_decode_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
