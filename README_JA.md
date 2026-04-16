@@ -24,7 +24,7 @@
 `ccswitch` は Python 標準ライブラリだけで動く CLI です。複数の AI ターミナルツールを使っていて、provider を切り替えるたびに設定ファイルを手で直したくない人向けのツールです。
 
 - Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw を 1 か所から切り替えます。
-- `openrouter -> op` のような短い alias を作って、`ccsw op` や `cxsw op` で切り替えられます。
+- `openrouter -> op` のような短い alias を作って、`ccsw op` や `cxsw op` で切り替えられます。この README では、それを日常的な基本の使い方として扱っています。
 - Claude / Codex / Gemini には live config を書き込み、OpenCode / OpenClaw には managed overlay を生成します。
 - `profile`、`doctor`、`run`、`history`、`rollback`、`repair`、`import current` を使えます。
 - 状態が危ないときは中途半端に進めず、fail-closed で止まります。
@@ -145,17 +145,41 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+### Alias の使い方
+
+`ccswitch` を継続的に使うなら、alias は「あると便利」ではなく、普段の使い方として定着させるのがおすすめです。
+
+```bash
+ccsw alias op openrouter
+ccsw alias vx vertex
+ccsw alias aws aws
+```
+
+以後は短い名前をそのまま使います。
+
+```bash
+ccsw op
+cxsw op
+ccsw all vx
+ccsw profile add work --codex op,vx --opencode op
+```
+
+もちろん alias を作らず、`ccsw openrouter` や `cxsw openrouter` を直接使ってもかまいません。
+
 ---
 
 ## 主なコマンド
 
 ```bash
+# 切り替え：alias 推奨。provider 名をそのまま書いても使えます
 ccsw op
 cxsw op
 gcsw op
 opsw op
 clawsw op
 ccsw all op
+ccsw openrouter
+cxsw openrouter
 
 ccsw list
 ccsw show
@@ -241,6 +265,13 @@ Codex では `model_provider` を明示的に書き、必要に応じて `suppor
 <summary><b>なぜ <code>ccsw op</code> は動くのに <code>python3 ccsw.py op</code> は動かないのですか？</b></summary>
 
 `ccsw op` は `bootstrap.sh` が入れる shell wrapper です。Python CLI 本体は明示的な subcommand を必要とします。
+
+</details>
+
+<details>
+<summary><b>provider ごとに alias を作ったほうがいいですか？</b></summary>
+
+たいていはそのほうが便利です。頻繁に切り替えるなら、`ccsw op`、`cxsw op`、`ccsw all vx` のような短いコマンドのほうが使いやすく、profile にもそのまま書きやすくなります。
 
 </details>
 

@@ -24,7 +24,7 @@
 `ccswitch` is a stdlib-only Python CLI for people who use more than one AI terminal tool and do not want to hand-edit five different config formats every time they switch providers.
 
 - Switch Claude Code, Codex CLI, Gemini CLI, OpenCode, and OpenClaw from one place.
-- Keep long provider names readable with aliases such as `openrouter -> op`, then use `ccsw op` or `cxsw op`.
+- Keep long provider names readable with aliases such as `openrouter -> op`, then use `ccsw op` or `cxsw op`. This README treats aliases as the default day-to-day workflow.
 - Write live config for Claude / Codex / Gemini and managed overlays for OpenCode / OpenClaw.
 - Ship practical operator commands such as `profile`, `doctor`, `run`, `history`, `rollback`, `repair`, and `import current`.
 - Fail closed when config, secrets, snapshot sync, or runtime leases are not safe enough to continue.
@@ -156,18 +156,41 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+### Alias Habit
+
+If you plan to use `ccswitch` regularly, treat aliases as the normal way to work instead of an occasional shortcut.
+
+```bash
+ccsw alias op openrouter
+ccsw alias vx vertex
+ccsw alias aws aws
+```
+
+Then keep using the short names everywhere:
+
+```bash
+ccsw op
+cxsw op
+ccsw all vx
+ccsw profile add work --codex op,vx --opencode op
+```
+
+You do not have to create aliases, though. `ccsw openrouter` and `cxsw openrouter` still work.
+
 ---
 
 ## Core Commands
 
 ```bash
-# Switch
+# Switch: aliases are recommended, but full provider names still work
 ccsw op                         # Claude Code, after bootstrap
 cxsw op                         # Codex CLI
 gcsw op                         # Gemini CLI
 opsw op                         # OpenCode
 clawsw op                       # OpenClaw
 ccsw all op                     # all configured tools
+ccsw openrouter                 # full-name form
+cxsw openrouter                 # full-name form
 
 # Manage providers
 ccsw list
@@ -320,6 +343,13 @@ Primary state lives in `~/.ccswitch/ccswitch.db`, with `~/.ccswitch/providers.js
 <summary><b>Why does <code>ccsw op</code> work, but not <code>python3 ccsw.py op</code>?</b></summary>
 
 `ccsw op` is a shell wrapper installed by `bootstrap.sh`. It defaults to `claude` when you omit the tool name. The Python CLI itself still expects an explicit subcommand such as `claude`, `codex`, or `all`.
+
+</details>
+
+<details>
+<summary><b>Should I create an alias for every provider?</b></summary>
+
+Usually yes. If you switch often, aliases make commands such as `ccsw op`, `cxsw op`, and `ccsw all vx` much easier to type and easier to reuse in profiles.
 
 </details>
 

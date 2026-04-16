@@ -24,7 +24,7 @@
 `ccswitch` — это CLI на Python standard library для тех, кто использует несколько AI-инструментов в терминале и не хочет вручную править пять разных конфигов при каждой смене provider.
 
 - Переключает Claude Code, Codex CLI, Gemini CLI, OpenCode и OpenClaw из одного места.
-- Поддерживает короткие alias, например `openrouter -> op`, чтобы потом использовать `ccsw op` или `cxsw op`.
+- Поддерживает короткие alias, например `openrouter -> op`, чтобы потом использовать `ccsw op` или `cxsw op`. В этом README это считается основным повседневным способом работы.
 - Пишет live config для Claude / Codex / Gemini и управляемые overlay для OpenCode / OpenClaw.
 - Включает `profile`, `doctor`, `run`, `history`, `rollback`, `repair` и `import current`.
 - Работает в fail-closed режиме, если состояние недостаточно надёжно.
@@ -145,17 +145,41 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+### Привычка Использовать Alias
+
+Если вы собираетесь пользоваться `ccswitch` регулярно, удобнее воспринимать alias не как редкое сокращение, а как обычный рабочий стиль.
+
+```bash
+ccsw alias op openrouter
+ccsw alias vx vertex
+ccsw alias aws aws
+```
+
+После этого используйте короткие имена везде:
+
+```bash
+ccsw op
+cxsw op
+ccsw all vx
+ccsw profile add work --codex op,vx --opencode op
+```
+
+При этом alias не обязателен: `ccsw openrouter` и `cxsw openrouter` тоже работают.
+
 ---
 
 ## Основные Команды
 
 ```bash
+# Переключение: alias рекомендуется, но полное имя provider тоже работает
 ccsw op
 cxsw op
 gcsw op
 opsw op
 clawsw op
 ccsw all op
+ccsw openrouter
+cxsw openrouter
 
 ccsw list
 ccsw show
@@ -241,6 +265,13 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>Почему работает <code>ccsw op</code>, но не работает <code>python3 ccsw.py op</code>?</b></summary>
 
 `ccsw op` — это shell wrapper, который устанавливает `bootstrap.sh`. Сам Python CLI по-прежнему ожидает явный subcommand.
+
+</details>
+
+<details>
+<summary><b>Стоит ли заводить alias для каждого provider?</b></summary>
+
+Обычно да. Если вы часто переключаетесь, команды вроде `ccsw op`, `cxsw op` и `ccsw all vx` короче, удобнее и лучше подходят для profile.
 
 </details>
 

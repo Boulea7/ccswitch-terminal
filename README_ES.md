@@ -24,7 +24,7 @@
 `ccswitch` es una herramienta CLI escrita solo con la librería estándar de Python para quienes usan varias herramientas AI en terminal y no quieren editar cinco formatos de configuración cada vez que cambian de provider.
 
 - Cambia Claude Code, Codex CLI, Gemini CLI, OpenCode y OpenClaw desde un solo lugar.
-- Usa alias cortos como `openrouter -> op`, y después ejecuta `ccsw op` o `cxsw op`.
+- Usa alias cortos como `openrouter -> op`, y después ejecuta `ccsw op` o `cxsw op`. En este README, esa es la forma recomendada de uso diario.
 - Escribe live config para Claude / Codex / Gemini y overlays gestionados para OpenCode / OpenClaw.
 - Incluye `profile`, `doctor`, `run`, `history`, `rollback`, `repair` e `import current`.
 - Falla de forma segura si la configuración, los secretos o el estado runtime no son lo bastante fiables.
@@ -145,17 +145,41 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+### Hábito de Alias
+
+Si vas a usar `ccswitch` con frecuencia, conviene tratar los alias como la forma normal de trabajo.
+
+```bash
+ccsw alias op openrouter
+ccsw alias vx vertex
+ccsw alias aws aws
+```
+
+Luego usa siempre los nombres cortos:
+
+```bash
+ccsw op
+cxsw op
+ccsw all vx
+ccsw profile add work --codex op,vx --opencode op
+```
+
+Si no quieres alias, también puedes usar `ccsw openrouter` o `cxsw openrouter`.
+
 ---
 
 ## Comandos Principales
 
 ```bash
+# Cambio: se recomienda alias, pero el nombre completo también funciona
 ccsw op
 cxsw op
 gcsw op
 opsw op
 clawsw op
 ccsw all op
+ccsw openrouter
+cxsw openrouter
 
 ccsw list
 ccsw show
@@ -243,6 +267,13 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>¿Por qué funciona <code>ccsw op</code> pero no <code>python3 ccsw.py op</code>?</b></summary>
 
 `ccsw op` es un wrapper de shell instalado por `bootstrap.sh`. El CLI Python sigue esperando un subcomando explícito.
+
+</details>
+
+<details>
+<summary><b>¿Conviene crear alias para cada provider?</b></summary>
+
+Sí, en la mayoría de los casos. Si cambias seguido, comandos como `ccsw op`, `cxsw op` o `ccsw all vx` son más cortos y además encajan mejor en los profiles.
 
 </details>
 

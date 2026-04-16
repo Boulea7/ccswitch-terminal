@@ -24,7 +24,7 @@
 `ccswitch` é uma CLI feita só com a biblioteca padrão do Python para quem usa várias ferramentas AI no terminal e não quer editar cinco formatos de configuração toda vez que troca de provider.
 
 - Alterna Claude Code, Codex CLI, Gemini CLI, OpenCode e OpenClaw em um só lugar.
-- Aceita aliases curtos como `openrouter -> op`, então depois você usa `ccsw op` ou `cxsw op`.
+- Aceita aliases curtos como `openrouter -> op`, então depois você usa `ccsw op` ou `cxsw op`. Neste README, esse é o fluxo recomendado para o uso diário.
 - Escreve live config para Claude / Codex / Gemini e overlays gerenciados para OpenCode / OpenClaw.
 - Inclui `profile`, `doctor`, `run`, `history`, `rollback`, `repair` e `import current`.
 - Para em modo fail-closed quando o estado não está seguro o bastante.
@@ -145,17 +145,41 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+### Hábito de Alias
+
+Se você vai usar `ccswitch` com frequência, vale tratar alias como o jeito normal de trabalhar.
+
+```bash
+ccsw alias op openrouter
+ccsw alias vx vertex
+ccsw alias aws aws
+```
+
+Depois disso, use os nomes curtos no dia a dia:
+
+```bash
+ccsw op
+cxsw op
+ccsw all vx
+ccsw profile add work --codex op,vx --opencode op
+```
+
+Se preferir, você ainda pode usar `ccsw openrouter` e `cxsw openrouter`.
+
 ---
 
 ## Comandos Principais
 
 ```bash
+# Troca: alias é o caminho recomendado, mas o nome completo também funciona
 ccsw op
 cxsw op
 gcsw op
 opsw op
 clawsw op
 ccsw all op
+ccsw openrouter
+cxsw openrouter
 
 ccsw list
 ccsw show
@@ -241,6 +265,13 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>Por que <code>ccsw op</code> funciona e <code>python3 ccsw.py op</code> não?</b></summary>
 
 `ccsw op` é um wrapper de shell instalado por `bootstrap.sh`. A CLI Python continua exigindo um subcomando explícito.
+
+</details>
+
+<details>
+<summary><b>Vale a pena criar alias para cada provider?</b></summary>
+
+Na maioria dos casos, sim. Se você troca bastante, comandos como `ccsw op`, `cxsw op` e `ccsw all vx` ficam mais rápidos de digitar e também funcionam melhor dentro de profiles.
 
 </details>
 
