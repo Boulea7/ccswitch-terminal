@@ -998,10 +998,19 @@ def _claim_run_lease(
             f"Run `ccsw repair {tool}` before starting a new managed run."
         )
         return subprocess.CompletedProcess([tool], 1, "", reason)
-    if _pid_matches_identity(manifest.get("child_pid"), manifest.get("child_started_at")):
+    if _pid_matches_identity(manifest.get("child_pid"), manifest.get("child_started_at")) or _pid_cannot_be_verified_but_is_running(
+        manifest.get("child_pid"),
+        manifest.get("child_started_at"),
+    ):
         reason = f"[ccsw] {tool} already has an active runtime lease; child process is still running"
         return subprocess.CompletedProcess([tool], 1, "", reason)
-    if _pid_matches_identity(manifest.get("owner_pid"), manifest.get("owner_started_at")) and not manifest.get("stale"):
+    if (
+        _pid_matches_identity(manifest.get("owner_pid"), manifest.get("owner_started_at"))
+        or _pid_cannot_be_verified_but_is_running(
+            manifest.get("owner_pid"),
+            manifest.get("owner_started_at"),
+        )
+    ) and not manifest.get("stale"):
         reason = f"[ccsw] {tool} already has an active runtime lease owned by another process"
         return subprocess.CompletedProcess([tool], 1, "", reason)
     if not _pid_matches_identity(manifest.get("owner_pid"), manifest.get("owner_started_at")) and _managed_target_needs_repair(manifest):

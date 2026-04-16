@@ -4729,7 +4729,7 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
             self.assertFalse(ccsw._pid_matches_identity(1234, "other-start"))
             self.assertTrue(ccsw._pid_matches_identity(1234, "pid-start"))
 
-    def test_claim_run_lease_without_start_token_treats_lease_as_unfinished(self) -> None:
+    def test_claim_run_lease_without_start_token_blocks_as_active_owner(self) -> None:
         manifest = {
             "tool": "codex",
             "lease_id": "lease-no-start",
@@ -4746,7 +4746,26 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
             result = ccsw._claim_run_lease("codex", "demo")
 
         self.assertIsNotNone(result)
-        self.assertIn("unfinished runtime lease", result.stderr)
+        self.assertIn("active runtime lease owned by another process", result.stderr)
+
+    def test_claim_run_lease_blocks_completed_lease_with_live_unverifiable_owner(self) -> None:
+        manifest = {
+            "tool": "codex",
+            "lease_id": "lease-complete-no-start",
+            "requested_target": "demo",
+            "selected_candidate": "demo",
+            "owner_pid": os.getpid(),
+            "phase": "completed",
+            "restore_status": "restored",
+            "cleanup_status": "cleaned",
+            "stale": False,
+        }
+
+        with patch("ccsw.get_managed_target", return_value=manifest):
+            result = ccsw._claim_run_lease("codex", "demo")
+
+        self.assertIsNotNone(result)
+        self.assertIn("active runtime lease owned by another process", result.stderr)
 
     def test_batch_failure_restores_partially_written_failed_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
