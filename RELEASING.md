@@ -10,7 +10,7 @@ This repository currently publishes release identity through Git tags and GitHub
 
 ## Pre-release Checklist
 
-1. Confirm the branch is ready to merge into `main`.
+1. Confirm the release commit is already on `main`, or that the current `main` state is the one you want to publish.
 2. Update [`CHANGELOG.md`](CHANGELOG.md) so the release-facing changes are captured under `Unreleased`.
 3. Check the public docs surface:
    - `README.md`

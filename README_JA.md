@@ -43,33 +43,33 @@
 次のプロンプトを Claude Code または Codex に貼り付けてください。`ccswitch` のインストール、最初の provider 追加、alias 作成、確認までまとめてできます。
 
 ```text
-Please install ccswitch from:
+ccswitch を次のリポジトリからインストールしてください:
 https://github.com/Boulea7/ccswitch-terminal
 
-Steps:
-1. Clone it to ~/ccsw
-2. Run bash ~/ccsw/bootstrap.sh
-3. Reload my shell with source ~/.zshrc
-4. Verify with python3 ~/ccsw/ccsw.py -h
+手順:
+1. ~/ccsw に clone
+2. bash ~/ccsw/bootstrap.sh を実行
+3. source ~/.zshrc で shell を再読み込み
+4. python3 ~/ccsw/ccsw.py -h で確認
 
-Then add one provider for me with env-based secrets:
-- provider name: openrouter
-- create this alias after setup: `op -> openrouter`
-- Claude URL: <replace with the Anthropic-compatible URL from my provider docs>
-- Claude token env var: OR_CLAUDE_TOKEN
-- Codex URL: <replace with the OpenAI-compatible URL from my provider docs>
-- Codex token env var: OR_CODEX_TOKEN
-- Gemini key env var: OR_GEMINI_KEY
+その後、環境変数参照で provider を 1 つ追加してください:
+- provider 名: openrouter
+- セットアップ後にこの alias を作成: `op -> openrouter`
+- Claude URL: <provider のドキュメントにある Anthropic 互換 URL に置き換える>
+- Claude token 用 env var: OR_CLAUDE_TOKEN
+- Codex URL: <provider のドキュメントにある OpenAI 互換 URL に置き換える>
+- Codex token 用 env var: OR_CODEX_TOKEN
+- Gemini key 用 env var: OR_GEMINI_KEY
 
-Write the real secret values into ~/ccsw/.env.local.
-Store only $ENV_VAR references in ccswitch.
+実際の秘密情報は ~/ccsw/.env.local に書き込んでください。
+ccswitch 側には $ENV_VAR 参照だけを保存してください。
 
-After that:
-1. run `ccsw alias op openrouter`
-2. run `ccsw op`
-3. run `cxsw op`
-4. run `ccsw show`
-5. explain briefly what changed
+その後:
+1. `ccsw alias op openrouter` を実行
+2. `ccsw op` を実行
+3. `cxsw op` を実行
+4. `ccsw show` を実行
+5. 何が変わったかを短く説明
 ```
 
 他の例:

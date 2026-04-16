@@ -8,6 +8,8 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ## Unreleased
 
+## v0.1.0 - 2026-04-16
+
 ### Added
 
 - Added a five-tool control plane for `Claude Code`, `Codex CLI`, `Gemini CLI`, `OpenCode`, and `OpenClaw`, including direct live-config writes for the first three and generated overlays for the latter two.

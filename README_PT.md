@@ -43,33 +43,33 @@ O exemplo principal deste README usa `openrouter`, mas o mesmo fluxo serve para 
 Copie este prompt para o Claude Code ou Codex. Ele instala `ccswitch`, adiciona o primeiro provider, cria um alias e faz a verificação básica.
 
 ```text
-Please install ccswitch from:
+Por favor instale o ccswitch a partir de:
 https://github.com/Boulea7/ccswitch-terminal
 
-Steps:
-1. Clone it to ~/ccsw
-2. Run bash ~/ccsw/bootstrap.sh
-3. Reload my shell with source ~/.zshrc
-4. Verify with python3 ~/ccsw/ccsw.py -h
+Passos:
+1. Faça clone em ~/ccsw
+2. Execute bash ~/ccsw/bootstrap.sh
+3. Recarregue meu shell com source ~/.zshrc
+4. Verifique com python3 ~/ccsw/ccsw.py -h
 
-Then add one provider for me with env-based secrets:
-- provider name: openrouter
-- create this alias after setup: `op -> openrouter`
-- Claude URL: <replace with the Anthropic-compatible URL from my provider docs>
-- Claude token env var: OR_CLAUDE_TOKEN
-- Codex URL: <replace with the OpenAI-compatible URL from my provider docs>
-- Codex token env var: OR_CODEX_TOKEN
-- Gemini key env var: OR_GEMINI_KEY
+Depois adicione um provider usando segredos por variáveis de ambiente:
+- nome do provider: openrouter
+- crie este alias após a configuração: `op -> openrouter`
+- Claude URL: <substitua pela URL compatível com Anthropic da documentação do provider>
+- env var do Claude token: OR_CLAUDE_TOKEN
+- Codex URL: <substitua pela URL compatível com OpenAI da documentação do provider>
+- env var do Codex token: OR_CODEX_TOKEN
+- env var da Gemini key: OR_GEMINI_KEY
 
-Write the real secret values into ~/ccsw/.env.local.
-Store only $ENV_VAR references in ccswitch.
+Escreva os valores reais em ~/ccsw/.env.local.
+Guarde no ccswitch apenas referências $ENV_VAR.
 
-After that:
-1. run `ccsw alias op openrouter`
-2. run `ccsw op`
-3. run `cxsw op`
-4. run `ccsw show`
-5. explain briefly what changed
+Depois:
+1. execute `ccsw alias op openrouter`
+2. execute `ccsw op`
+3. execute `cxsw op`
+4. execute `ccsw show`
+5. explique brevemente o que mudou
 ```
 
 Outros exemplos comuns:

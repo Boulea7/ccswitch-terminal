@@ -43,33 +43,33 @@
 Copia este prompt en Claude Code o Codex. Instala `ccswitch`, agrega tu primer provider, crea un alias y valida el resultado.
 
 ```text
-Please install ccswitch from:
+Por favor instala ccswitch desde:
 https://github.com/Boulea7/ccswitch-terminal
 
-Steps:
-1. Clone it to ~/ccsw
-2. Run bash ~/ccsw/bootstrap.sh
-3. Reload my shell with source ~/.zshrc
-4. Verify with python3 ~/ccsw/ccsw.py -h
+Pasos:
+1. Clónalo en ~/ccsw
+2. Ejecuta bash ~/ccsw/bootstrap.sh
+3. Recarga mi shell con source ~/.zshrc
+4. Verifica con python3 ~/ccsw/ccsw.py -h
 
-Then add one provider for me with env-based secrets:
-- provider name: openrouter
-- create this alias after setup: `op -> openrouter`
-- Claude URL: <replace with the Anthropic-compatible URL from my provider docs>
-- Claude token env var: OR_CLAUDE_TOKEN
-- Codex URL: <replace with the OpenAI-compatible URL from my provider docs>
-- Codex token env var: OR_CODEX_TOKEN
-- Gemini key env var: OR_GEMINI_KEY
+Luego agrega un provider usando secretos por variables de entorno:
+- nombre del provider: openrouter
+- crea este alias al terminar: `op -> openrouter`
+- Claude URL: <reemplaza con la URL Anthropic-compatible de la documentación del provider>
+- variable de entorno para Claude token: OR_CLAUDE_TOKEN
+- Codex URL: <reemplaza con la URL OpenAI-compatible de la documentación del provider>
+- variable de entorno para Codex token: OR_CODEX_TOKEN
+- variable de entorno para Gemini key: OR_GEMINI_KEY
 
-Write the real secret values into ~/ccsw/.env.local.
-Store only $ENV_VAR references in ccswitch.
+Escribe los valores reales en ~/ccsw/.env.local.
+Guarda en ccswitch solo referencias $ENV_VAR.
 
-After that:
-1. run `ccsw alias op openrouter`
-2. run `ccsw op`
-3. run `cxsw op`
-4. run `ccsw show`
-5. explain briefly what changed
+Después:
+1. ejecuta `ccsw alias op openrouter`
+2. ejecuta `ccsw op`
+3. ejecuta `cxsw op`
+4. ejecuta `ccsw show`
+5. explica brevemente qué cambió
 ```
 
 Otros ejemplos comunes:
