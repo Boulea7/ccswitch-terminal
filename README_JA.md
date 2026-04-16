@@ -149,6 +149,14 @@ ccsw alias aws aws
 
 `ccswitch` を継続的に使うなら、alias は「あると便利」ではなく、普段の使い方として定着させるのがおすすめです。
 
+おすすめの縮写はこんな形です。
+
+| Provider | 推奨 alias |
+|----------|------------|
+| `openrouter` | `op` |
+| `vertex` | `vx` |
+| `aws` | `aws` |
+
 ```bash
 ccsw alias op openrouter
 ccsw alias vx vertex
@@ -162,6 +170,7 @@ ccsw op
 cxsw op
 ccsw all vx
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ```
 
 もちろん alias を作らず、`ccsw openrouter` や `cxsw openrouter` を直接使ってもかまいません。
@@ -188,6 +197,7 @@ ccsw remove <provider>
 ccsw alias <alias> <provider>
 
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
 ccsw profile use work
 
@@ -272,6 +282,10 @@ Codex では `model_provider` を明示的に書き、必要に応じて `suppor
 <summary><b>provider ごとに alias を作ったほうがいいですか？</b></summary>
 
 たいていはそのほうが便利です。頻繁に切り替えるなら、`ccsw op`、`cxsw op`、`ccsw all vx` のような短いコマンドのほうが使いやすく、profile にもそのまま書きやすくなります。
+
+- `op = openrouter`
+- `vx = vertex`
+- `aws = aws`
 
 </details>
 

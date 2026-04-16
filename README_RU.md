@@ -149,6 +149,14 @@ ccsw alias aws aws
 
 Если вы собираетесь пользоваться `ccswitch` регулярно, удобнее воспринимать alias не как редкое сокращение, а как обычный рабочий стиль.
 
+Простая и стабильная схема может быть такой:
+
+| Provider | Рекомендуемый alias |
+|----------|---------------------|
+| `openrouter` | `op` |
+| `vertex` | `vx` |
+| `aws` | `aws` |
+
 ```bash
 ccsw alias op openrouter
 ccsw alias vx vertex
@@ -162,6 +170,7 @@ ccsw op
 cxsw op
 ccsw all vx
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ```
 
 При этом alias не обязателен: `ccsw openrouter` и `cxsw openrouter` тоже работают.
@@ -188,6 +197,7 @@ ccsw remove <provider>
 ccsw alias <alias> <provider>
 
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
 ccsw profile use work
 
@@ -272,6 +282,10 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>Стоит ли заводить alias для каждого provider?</b></summary>
 
 Обычно да. Если вы часто переключаетесь, команды вроде `ccsw op`, `cxsw op` и `ccsw all vx` короче, удобнее и лучше подходят для profile.
+
+- `op = openrouter`
+- `vx = vertex`
+- `aws = aws`
 
 </details>
 

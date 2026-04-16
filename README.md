@@ -160,6 +160,14 @@ ccsw alias aws aws
 
 如果你准备长期用 `ccswitch`，建议把 alias 当成默认习惯，而不是偶尔才用的快捷方式。
 
+推荐缩写可以保持简短、稳定、好记：
+
+| Provider | 推荐 alias | 说明 |
+|----------|------------|------|
+| `openrouter` | `op` | 主 README 默认示例 |
+| `vertex` | `vx` | 比 `vertex` 更短，和 `op` 风格一致 |
+| `aws` | `aws` | 名字本身已经足够短 |
+
 ```bash
 ccsw alias op openrouter
 ccsw alias vx vertex
@@ -173,6 +181,7 @@ ccsw op
 cxsw op
 ccsw all vx
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ```
 
 当然，不建 alias 也能正常用，直接写 `ccsw openrouter`、`cxsw openrouter` 一样可以。
@@ -201,6 +210,7 @@ ccsw alias <alias> <provider>
 
 # 复用队列
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
 ccsw profile use work
 
@@ -350,6 +360,12 @@ wire_api = "responses"
 <summary><b>是不是建议每个 provider 都先配一个 alias？</b></summary>
 
 建议。尤其是你会频繁切换时，alias 会让 `ccsw op`、`cxsw op`、`ccsw all vx` 这类命令更短，也更适合写进 profile。
+
+一个简单的约定是：
+
+- `op = openrouter`
+- `vx = vertex`
+- `aws = aws`
 
 </details>
 

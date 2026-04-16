@@ -160,6 +160,14 @@ ccsw alias aws aws
 
 If you plan to use `ccswitch` regularly, treat aliases as the normal way to work instead of an occasional shortcut.
 
+Recommended shorthand can stay short, stable, and easy to remember:
+
+| Provider | Suggested alias | Why |
+|----------|------------------|-----|
+| `openrouter` | `op` | primary example in this README |
+| `vertex` | `vx` | shorter than `vertex`, keeps the same style as `op` |
+| `aws` | `aws` | already short enough |
+
 ```bash
 ccsw alias op openrouter
 ccsw alias vx vertex
@@ -173,6 +181,7 @@ ccsw op
 cxsw op
 ccsw all vx
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ```
 
 You do not have to create aliases, though. `ccsw openrouter` and `cxsw openrouter` still work.
@@ -201,6 +210,7 @@ ccsw alias <alias> <provider>
 
 # Reusable queues
 ccsw profile add work --codex op,vx --opencode op
+ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
 ccsw profile use work
 
@@ -350,6 +360,12 @@ Primary state lives in `~/.ccswitch/ccswitch.db`, with `~/.ccswitch/providers.js
 <summary><b>Should I create an alias for every provider?</b></summary>
 
 Usually yes. If you switch often, aliases make commands such as `ccsw op`, `cxsw op`, and `ccsw all vx` much easier to type and easier to reuse in profiles.
+
+A simple convention is:
+
+- `op = openrouter`
+- `vx = vertex`
+- `aws = aws`
 
 </details>
 
