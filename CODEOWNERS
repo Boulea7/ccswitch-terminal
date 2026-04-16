@@ -1,0 +1,14 @@
+# Default ownership
+* @Boulea7
+
+# Repo-facing docs and automation
+/.github/ @Boulea7
+/README.md @Boulea7
+/README_EN.md @Boulea7
+/README_JA.md @Boulea7
+/README_ES.md @Boulea7
+/README_PT.md @Boulea7
+/README_RU.md @Boulea7
+/CONTRIBUTING.md @Boulea7
+/SECURITY.md @Boulea7
+/SUPPORT.md @Boulea7

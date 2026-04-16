@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage help and support notes
+    url: https://github.com/Boulea7/ccswitch-terminal/blob/main/SUPPORT.md
+    about: Read the support guide before opening a new issue.
+  - name: Private security email
+    url: mailto:opensource@lnzai.com
+    about: Email sensitive security reports if GitHub private advisories are unavailable.
+  - name: Security policy
+    url: https://github.com/Boulea7/ccswitch-terminal/blob/main/SECURITY.md
+    about: Use the private reporting path for real vulnerabilities or sensitive material.

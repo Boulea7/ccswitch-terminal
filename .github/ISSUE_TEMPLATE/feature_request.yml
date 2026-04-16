@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a focused CLI, docs, or automation improvement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: workflow_problem
+    attributes:
+      label: Workflow problem
+      description: Describe the real workflow friction first.
+      placeholder: |
+        Switching a multi-tool setup requires repeating the same queue setup across machines.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_change
+    attributes:
+      label: Proposed change
+      description: Command shape, docs change, or automation behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing commands or workarounds you already tried.
+  - type: textarea
+    id: scope_risks
+    attributes:
+      label: Scope and risks
+      description: Compatibility concerns, ambiguous behavior, or areas that should stay out of scope.
