@@ -1,69 +1,288 @@
+<div align="center">
+
+<img src="assets/ccswitch-terminal-banner.webp" alt="banner ccswitch-terminal" width="100%">
+
 # ccswitch-terminal
 
-**Переключатель API provider для Claude Code / Codex CLI / Gemini CLI / OpenCode / OpenClaw**
+**Одна точка переключения для Claude Code, Codex CLI, Gemini CLI, OpenCode и OpenClaw**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/Boulea7/ccswitch-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/Boulea7/ccswitch-terminal/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Zero Dependency](https://img.shields.io/badge/zero--dependency-stdlib_only-success.svg)](#быстрый-старт)
 
 [简体中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Español](README_ES.md) | [Português](README_PT.md) | Русский
 
 [CI](https://github.com/Boulea7/ccswitch-terminal/actions/workflows/ci.yml) | [CodeQL](https://github.com/Boulea7/ccswitch-terminal/actions/workflows/codeql.yml) | [Issues](https://github.com/Boulea7/ccswitch-terminal/issues/new/choose) | [Changelog](CHANGELOG.md) | [Releasing](RELEASING.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Support](SUPPORT.md)
 
-## Что это за файл
+</div>
 
-Это короткий quickstart на русском. Он держит ту же публичную поверхность по установке, проверке и базовым командам, что и остальные release-facing README. Полная документация, детали по `doctor`, `run`, `repair`, схеме истории и рабочим ограничениям находятся в [README_EN.md](README_EN.md).
+---
 
-## Перед началом
+## Что Делает
 
-- Нужен Python `3.9+`
-- `ccswitch` не устанавливает управляемые CLI. Сначала отдельно установите те `Claude Code`, `Codex CLI`, `Gemini CLI`, `OpenCode` или `OpenClaw`, которыми хотите управлять
-- `bootstrap.sh` автоматически настраивает только rc-файлы `bash` и `zsh`
-- Сгенерированные `~/.ccswitch/*.env` предназначены для POSIX shell. В `fish` или PowerShell не делайте для них прямой `source`; используйте `python3 ccsw.py ...` и переносите `export` в синтаксис вашего shell
+`ccswitch` — это CLI на Python standard library для тех, кто использует несколько AI-инструментов в терминале и не хочет вручную править пять разных конфигов при каждой смене provider.
 
-## Минимальная установка
+- Переключает Claude Code, Codex CLI, Gemini CLI, OpenCode и OpenClaw из одного места.
+- Поддерживает короткие alias, например `openrouter -> op`, чтобы потом использовать `ccsw op` или `cxsw op`.
+- Пишет live config для Claude / Codex / Gemini и управляемые overlay для OpenCode / OpenClaw.
+- Включает `profile`, `doctor`, `run`, `history`, `rollback`, `repair` и `import current`.
+- Работает в fail-closed режиме, если состояние недостаточно надёжно.
+
+Главный пример в README — `openrouter`, но тот же поток подходит и для Vertex AI, AWS-шлюзов или собственного совместимого relay.
+
+---
+
+## Быстрый Старт
+
+> [!IMPORTANT]
+> `ccswitch` управляет уже установленными CLI. Он не устанавливает за вас Claude Code, Codex CLI, Gemini CLI, OpenCode или OpenClaw.
+
+### Установка через Claude Code или Codex
+
+Скопируйте этот prompt в Claude Code или Codex. Он установит `ccswitch`, добавит первый provider, создаст alias и выполнит базовую проверку.
+
+```text
+Please install ccswitch from:
+https://github.com/Boulea7/ccswitch-terminal
+
+Steps:
+1. Clone it to ~/ccsw
+2. Run bash ~/ccsw/bootstrap.sh
+3. Reload my shell with source ~/.zshrc
+4. Verify with python3 ~/ccsw/ccsw.py -h
+
+Then add one provider for me with env-based secrets:
+- provider name: openrouter
+- create this alias after setup: `op -> openrouter`
+- Claude URL: <replace with the Anthropic-compatible URL from my provider docs>
+- Claude token env var: OR_CLAUDE_TOKEN
+- Codex URL: <replace with the OpenAI-compatible URL from my provider docs>
+- Codex token env var: OR_CODEX_TOKEN
+- Gemini key env var: OR_GEMINI_KEY
+
+Write the real secret values into ~/ccsw/.env.local.
+Store only $ENV_VAR references in ccswitch.
+
+After that:
+1. run `ccsw alias op openrouter`
+2. run `ccsw op`
+3. run `cxsw op`
+4. run `ccsw show`
+5. explain briefly what changed
+```
+
+Другие типичные примеры:
+
+- `vertex` с alias `vx`
+- `aws` с alias `aws`
+
+### Ручная Установка
 
 ```bash
 git clone https://github.com/Boulea7/ccswitch-terminal ~/ccsw
-bash ~/ccsw/bootstrap.sh --dry-run
 bash ~/ccsw/bootstrap.sh
 source ~/.zshrc   # или source ~/.bashrc
 python3 ~/ccsw/ccsw.py -h
 ```
 
-`--dry-run` показывает план изменений и не записывает реальные файлы.
-
-Если позже понадобится убрать bootstrap-интеграцию, удалите из rc-файла управляемый блок между `# >>> ccsw bootstrap >>>` и `# <<< ccsw bootstrap <<<`, уберите строки `source`, которые bootstrap добавил для `active.env` / `codex.env` / `opencode.env` / `openclaw.env`, перезагрузите shell и при желании вручную удалите `~/ccsw` и `~/.ccswitch`, если локальное хранилище и generated overlay больше не нужны. Отдельного флага uninstall в `bootstrap.sh` сейчас нет.
-
-## Первая проверка
+Предпросмотр без изменения shell:
 
 ```bash
-python3 ~/ccsw/ccsw.py list
-python3 ~/ccsw/ccsw.py show
-python3 ~/ccsw/ccsw.py doctor all --json
+bash ~/ccsw/bootstrap.sh --dry-run
 ```
 
-- `doctor all --json` выводит NDJSON: одна строка и один payload на каждый tool, без общей JSON-массив-обертки
-- На свежей установке без active provider `doctor` может вернуть `inactive`, и это не обязательно означает, что bootstrap сломан
+<details>
+<summary><b>Примечания по shell</b></summary>
 
-## Базовые команды
+- После `bootstrap.sh` команда `ccsw <provider>` означает `ccsw claude <provider>`.
+- `cxsw`, `gcsw`, `opsw` и `clawsw` уже содержат `eval`.
+- В `fish` или PowerShell лучше использовать `python3 ccsw.py ...` и адаптировать exports под синтаксис своего shell.
+
+</details>
+
+---
+
+## Первый Provider за 60 Секунд
+
+1. Сохраните секреты в `~/ccsw/.env.local`.
+
+```bash
+OR_CLAUDE_TOKEN=<your-claude-token>
+OR_CODEX_TOKEN=<your-codex-token>
+OR_GEMINI_KEY=<your-gemini-key>
+```
+
+2. Добавьте provider.
+
+```bash
+ccsw add openrouter \
+  --claude-url '<replace-with-your-anthropic-url>' \
+  --claude-token '$OR_CLAUDE_TOKEN' \
+  --codex-url '<replace-with-your-openai-url>' \
+  --codex-token '$OR_CODEX_TOKEN' \
+  --gemini-key '$OR_GEMINI_KEY'
+```
+
+3. Можно использовать полное имя provider или создать короткий alias.
 
 ```bash
 ccsw openrouter
 cxsw openrouter
-gcsw openrouter
-ccsw all openrouter
+
+ccsw alias op openrouter
+ccsw op
+cxsw op
+gcsw op
+ccsw all op
+ccsw show
+```
+
+4. Тот же шаблон для других provider.
+
+```bash
+ccsw alias vx vertex
+ccsw alias aws aws
+```
+
+---
+
+## Основные Команды
+
+```bash
+ccsw op
+cxsw op
+gcsw op
+opsw op
+clawsw op
+ccsw all op
+
+ccsw list
+ccsw show
+ccsw add <provider>
+ccsw remove <provider>
+ccsw alias <alias> <provider>
+
+ccsw profile add work --codex op,vx --opencode op
+ccsw profile show work
 ccsw profile use work
+
+ccsw doctor all
 ccsw history --limit 20
 ccsw rollback codex
 ccsw repair codex
+ccsw import current codex rescued-codex
 ccsw run codex work -- codex exec "hello"
 ```
 
-## Куда смотреть дальше
+> [!NOTE]
+> `gcsw op` влияет только на текущую shell-сессию. Если вы запускаете `python3 ccsw.py gemini ...` или `python3 ccsw.py codex ...` напрямую, используйте `eval "$(python3 ccsw.py ...)"`.
 
-- Полное описание: [README_EN.md](README_EN.md)
+---
+
+## Дополнительно
+
+<details>
+<summary><b>Секреты лучше хранить в <code>.env.local</code></b></summary>
+
+Храните реальные токены в `~/ccsw/.env.local`, а в `ccswitch` оставляйте только ссылки вида `$ENV_VAR`.
+
+Сам `.env.local` остаётся plain text, поэтому его нужно держать локально, без отслеживания в git.
+- После успешного переключения разрешённые секреты всё равно записываются в config или activation-файлы целевого инструмента.
+- Новые literal secret по умолчанию отклоняются, если явно не передать `--allow-literal-secrets`.
+
+</details>
+
+<details>
+<summary><b>profile, doctor и run</b></summary>
+
+```bash
+ccsw profile add work --claude op --codex op,vx --gemini aws
+ccsw doctor codex op --deep
+ccsw run codex work -- codex exec "hello"
+```
+
+</details>
+
+<details>
+<summary><b>import, rollback и repair</b></summary>
+
+```bash
+ccsw import current claude rescued-claude
+ccsw rollback codex
+ccsw repair all
+```
+
+</details>
+
+<details>
+<summary><b>Переопределение директорий конфигурации</b></summary>
+
+```bash
+ccsw settings get
+ccsw settings set codex_config_dir ~/.codex-alt
+ccsw settings set openclaw_config_dir ~/.openclaw-alt
+```
+
+</details>
+
+<details>
+<summary><b>Заметка про Codex 0.116+</b></summary>
+
+Для Codex `ccswitch` пишет явный `model_provider` и использует `supports_websockets = false`, когда это требуется.
+
+</details>
+
+---
+
+## FAQ
+
+<details>
+<summary><b>Почему работает <code>ccsw op</code>, но не работает <code>python3 ccsw.py op</code>?</b></summary>
+
+`ccsw op` — это shell wrapper, который устанавливает `bootstrap.sh`. Сам Python CLI по-прежнему ожидает явный subcommand.
+
+</details>
+
+<details>
+<summary><b>Можно ли использовать Vertex AI, AWS или свой relay?</b></summary>
+
+Да. `openrouter` здесь только основной пример.
+
+</details>
+
+---
+
+## Что Почитать Дальше
+
+- Основная reference-версия: [README_EN.md](README_EN.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Releasing: [RELEASING.md](RELEASING.md)
-- Поддержка: [SUPPORT.md](SUPPORT.md)
-- Как контрибьютить: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Безопасность: [SECURITY.md](SECURITY.md)
-- Правила сообщества: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security: [SECURITY.md](SECURITY.md)
+- Support: [SUPPORT.md](SUPPORT.md)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+---
+
+## Проверка
+
+Для изменений в коде:
+
+```bash
+bash bootstrap.sh --dry-run
+python3 ccsw.py -h
+python3 -m unittest discover -s tests -q
+```
+
+Для чисто документальных изменений перепроверьте примеры команд, ссылки и согласованность публичных README.
+
+---
+
+## Требования
+
+Нужен только Python 3.9+. `pip install` не требуется.
+
+## License
+
+MIT

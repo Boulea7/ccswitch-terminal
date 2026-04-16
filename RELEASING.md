@@ -43,6 +43,7 @@ python3 -m unittest -q tests.test_bootstrap tests.test_cli_smoke
 ## Docs Consistency Check
 
 The repository CI includes a lightweight docs check. Before tagging, either let that workflow pass on the release branch or mirror its intent locally: public docs should link the release docs, localized quickstarts should point back to the English reference plus support/security pages, and stale wording should be cleaned up before the tag is cut.
+Also confirm that the public README variants still agree on the top-level product surface: hero banner, language links, primary install guidance, and public support/release links.
 
 ## Tagging And Publishing
 
