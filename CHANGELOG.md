@@ -14,7 +14,7 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 - Added a five-tool control plane for `Claude Code`, `Codex CLI`, `Gemini CLI`, `OpenCode`, and `OpenClaw`, including direct live-config writes for the first three and generated overlays for the latter two.
 - Added higher-level CLI workflows: `profile`, `doctor`, `run`, `history`, `rollback`, `repair`, `settings`, and `import current`.
-- Added persisted runtime lease / manifest tracking in SQLite `managed_targets` so stale `run` scenes can be diagnosed and repaired explicitly instead of being silently overwritten.
+- Added persisted runtime lease / manifest tracking in SQLite `managed_targets` so stale `run` sessions can be diagnosed and repaired explicitly instead of being silently overwritten.
 - Added subprocess-driven CLI smoke coverage, bootstrap shell-contract tests, and docs consistency checks alongside the existing unit coverage.
 - Added [`RELEASING.md`](RELEASING.md) to document the release checklist, tagging flow, and GitHub release handoff.
 - Added this `CHANGELOG.md` so public releases have a stable place for notes outside of internal agent docs.
@@ -23,7 +23,7 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ### Changed
 
-- Refreshed the public README surface across all shipped languages so they now share the banner/header treatment, clearer introductions, visible AI-assisted install guidance, alias-first examples such as `openrouter -> op`, and a shorter folded layout for lower-priority details.
+- Refreshed the public README set across all shipped languages so they now share the same banner/header treatment, clearer introductions, copy-paste install prompts for Claude Code / Codex, alias-first examples such as `openrouter -> op`, and folded sections for lower-priority details.
 - Changed the repository to a public-release-oriented surface: private local assistant docs were removed from tracked files and from reachable git history, while local ignore rules still support keeping those files on the maintainer machine.
 - Changed bootstrap to install one managed shell block that includes wrapper functions plus activation-file sourcing, and to better handle repeated installs, old rc snippets, and shell detection fallbacks.
 - Changed Codex switching to use a custom `model_provider` block with `supports_websockets = false` instead of relying on legacy root-level `openai_base_url` guidance.

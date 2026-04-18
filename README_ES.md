@@ -147,7 +147,7 @@ ccsw alias aws aws
 
 ### Alias (abreviatura)
 
-Si vas a usar `ccswitch` con frecuencia, conviene tratar los alias (abreviaturas) como la forma normal de trabajo.
+Si vas a usar `ccswitch` con frecuencia, resulta más cómodo usar alias (abreviaturas) en el día a día en lugar de dejarlos solo como atajos ocasionales.
 
 Una convención corta y estable puede ser:
 

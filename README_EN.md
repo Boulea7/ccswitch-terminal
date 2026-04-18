@@ -158,7 +158,7 @@ ccsw alias aws aws
 
 ### Alias (Short Name) Habit
 
-If you plan to use `ccswitch` regularly, treat aliases (short names) as the normal way to work instead of an occasional shortcut.
+If you plan to use `ccswitch` regularly, it is easier to use aliases (short names) in day-to-day commands instead of saving them for the occasional shortcut.
 
 Recommended shorthand can stay short, stable, and easy to remember:
 
@@ -417,7 +417,7 @@ python3 ccsw.py -h
 python3 -m unittest discover -s tests -q
 ```
 
-For docs-only changes, at least re-check the public docs surface, example commands, and cross-links before opening a PR.
+For docs-only changes, at least re-check the public docs, example commands, and cross-links before opening a PR.
 
 ---
 

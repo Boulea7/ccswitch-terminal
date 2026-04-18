@@ -12,7 +12,7 @@ This repository currently publishes release identity through Git tags and GitHub
 
 1. Confirm the release commit is already on `main`, or that the current `main` state is the one you want to publish.
 2. Update [`CHANGELOG.md`](CHANGELOG.md) so the release-facing changes are captured under `Unreleased`.
-3. Check the public docs surface:
+3. Check the public docs:
    - `README.md`
    - `README_EN.md`
    - `README_ES.md`
@@ -42,7 +42,7 @@ python3 -m unittest -q tests.test_bootstrap tests.test_cli_smoke
 
 ## Docs Consistency Check
 
-The repository CI includes a lightweight docs check. Before tagging, either let that workflow pass on the release branch or mirror its intent locally: public docs should link the release docs, localized quickstarts should point back to the English reference plus support/security pages, and stale wording should be cleaned up before the tag is cut.
+The repository CI includes a lightweight docs check. Before tagging, either let that workflow pass on the release branch or mirror its intent locally: public docs should link the release docs, localized quickstarts should point back to the English reference plus support/security pages, and stale wording should be cleaned up before the tag is created.
 Also confirm that the public README variants still agree on the top-level product surface: hero banner, language links, primary install guidance, and public support/release links.
 
 ## Tagging And Publishing

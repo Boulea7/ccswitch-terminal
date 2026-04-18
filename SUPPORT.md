@@ -36,7 +36,7 @@ For CLI-chain regressions, also run:
 python3 -m unittest -q tests.test_bootstrap tests.test_cli_smoke
 ```
 
-For docs or release-surface confusion, also check:
+For docs or release-related confusion, also check:
 
 - [`README.md`](README.md) or [`README_EN.md`](README_EN.md)
 - [`CHANGELOG.md`](CHANGELOG.md)
