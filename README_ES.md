@@ -69,7 +69,7 @@ Después:
 2. ejecuta `ccsw op`
 3. ejecuta `cxsw op`
 4. ejecuta `ccsw show`
-5. explica brevemente qué cambió
+5. explica brevemente en español qué cambió
 ```
 
 Otros ejemplos comunes:
@@ -145,13 +145,13 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
-### Hábito de Alias
+### Alias (abreviatura)
 
-Si vas a usar `ccswitch` con frecuencia, conviene tratar los alias como la forma normal de trabajo.
+Si vas a usar `ccswitch` con frecuencia, conviene tratar los alias (abreviaturas) como la forma normal de trabajo.
 
 Una convención corta y estable puede ser:
 
-| Provider | Alias sugerido |
+| Provider | Alias sugerido (abreviatura) |
 |----------|----------------|
 | `openrouter` | `op` |
 | `vertex` | `vx` |
@@ -281,7 +281,7 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 </details>
 
 <details>
-<summary><b>¿Conviene crear alias para cada provider?</b></summary>
+<summary><b>¿Conviene crear alias (abreviaturas) para cada provider?</b></summary>
 
 Sí, en la mayoría de los casos. Si cambias seguido, comandos como `ccsw op`, `cxsw op` o `ccsw all vx` son más cortos y además encajan mejor en los profiles.
 
@@ -328,7 +328,7 @@ Para cambios solo de documentación, vuelve a revisar comandos de ejemplo, enlac
 
 ## Requisitos
 
-Solo Python 3.9+. No hace falta `pip install`.
+Solo necesitas Python 3.9+. El proyecto no depende de paquetes externos, así que no hace falta instalar nada más con `pip`.
 
 ## License
 

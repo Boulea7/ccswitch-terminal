@@ -29,7 +29,7 @@
 - Ship practical operator commands such as `profile`, `doctor`, `run`, `history`, `rollback`, `repair`, and `import current`.
 - Fail closed when config, secrets, snapshot sync, or runtime leases are not safe enough to continue.
 
-`openrouter` is the main example in this README because many people know it already. The same workflow also works for providers such as Vertex AI, AWS-hosted gateways, or your own compatible relay. Replace URLs and credentials with the values from your provider's docs.
+`openrouter` is the main example in this README. The same workflow also works for providers such as Vertex AI, AWS-hosted gateways, or your own compatible relay. Replace URLs and credentials with the values from your provider's docs.
 
 ---
 
@@ -69,7 +69,7 @@ After that:
 2. run `ccsw op`
 3. run `cxsw op`
 4. run `ccsw show`
-5. explain briefly what changed
+5. explain briefly in English what changed
 ```
 
 If you want other examples, keep the same workflow and just swap the provider name:
@@ -114,7 +114,7 @@ bash ~/ccsw/bootstrap.sh --dry-run
 
 ## First Provider in 60 Seconds
 
-If you prefer adding the first provider yourself, this is the shortest useful path.
+If you prefer adding the first provider yourself, use this flow.
 
 1. Put secrets in `~/ccsw/.env.local`.
 
@@ -156,13 +156,13 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
-### Alias Habit
+### Alias (Short Name) Habit
 
-If you plan to use `ccswitch` regularly, treat aliases as the normal way to work instead of an occasional shortcut.
+If you plan to use `ccswitch` regularly, treat aliases (short names) as the normal way to work instead of an occasional shortcut.
 
 Recommended shorthand can stay short, stable, and easy to remember:
 
-| Provider | Suggested alias | Why |
+| Provider | Suggested alias (short name) | Why |
 |----------|------------------|-----|
 | `openrouter` | `op` | primary example in this README |
 | `vertex` | `vx` | shorter than `vertex`, keeps the same style as `op` |
@@ -357,9 +357,9 @@ Primary state lives in `~/.ccswitch/ccswitch.db`, with `~/.ccswitch/providers.js
 </details>
 
 <details>
-<summary><b>Should I create an alias for every provider?</b></summary>
+<summary><b>Should I create an alias (short name) for every provider?</b></summary>
 
-Usually yes. If you switch often, aliases make commands such as `ccsw op`, `cxsw op`, and `ccsw all vx` much easier to type and easier to reuse in profiles.
+Usually yes. If you switch often, aliases (short names) make commands such as `ccsw op`, `cxsw op`, and `ccsw all vx` much easier to type and easier to reuse in profiles.
 
 A simple convention is:
 
@@ -423,7 +423,7 @@ For docs-only changes, at least re-check the public docs surface, example comman
 
 ## Requirements
 
-Python 3.9+ only. No third-party package is required.
+You only need Python 3.9+. The project has no third-party package dependency, so there is nothing extra to `pip install`.
 
 ## License
 

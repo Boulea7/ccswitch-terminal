@@ -69,7 +69,7 @@ ccswitch 側には $ENV_VAR 参照だけを保存してください。
 2. `ccsw op` を実行
 3. `cxsw op` を実行
 4. `ccsw show` を実行
-5. 何が変わったかを短く説明
+5. 最後に何が変わったかを日本語で短く説明
 ```
 
 他の例:
@@ -145,13 +145,13 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
-### Alias の使い方
+### Alias（短縮名）の使い方
 
-`ccswitch` を継続的に使うなら、alias は「あると便利」ではなく、普段の使い方として定着させるのがおすすめです。
+`ccswitch` を継続的に使うなら、alias（短縮名）は「あると便利」ではなく、普段の使い方として定着させるのがおすすめです。
 
 おすすめの縮写はこんな形です。
 
-| Provider | 推奨 alias |
+| Provider | 推奨 alias（短縮名） |
 |----------|------------|
 | `openrouter` | `op` |
 | `vertex` | `vx` |
@@ -279,7 +279,7 @@ Codex では `model_provider` を明示的に書き、必要に応じて `suppor
 </details>
 
 <details>
-<summary><b>provider ごとに alias を作ったほうがいいですか？</b></summary>
+<summary><b>provider ごとに alias（短縮名）を作ったほうがいいですか？</b></summary>
 
 たいていはそのほうが便利です。頻繁に切り替えるなら、`ccsw op`、`cxsw op`、`ccsw all vx` のような短いコマンドのほうが使いやすく、profile にもそのまま書きやすくなります。
 
@@ -326,7 +326,7 @@ python3 -m unittest discover -s tests -q
 
 ## 要件
 
-必要なのは Python 3.9+ だけです。`pip install` は不要です。
+必要なのは Python 3.9+ だけです。追加のパッケージを `pip install` する必要はありません。
 
 ## License
 

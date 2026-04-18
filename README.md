@@ -29,7 +29,7 @@
 - 自带 `profile`、`doctor`、`run`、`history`、`rollback`、`repair`、`import current` 这些实用命令。
 - 遇到配置不一致、secret 解析失败、快照同步异常、runtime lease 残留时，默认直接停下，不做半成功切换。
 
-这份 README 主要用 `openrouter` 当例子，因为很多人一眼能看懂。你也可以照样配置 Vertex AI、AWS 托管网关，或者你自己的兼容中转。把 URL 和凭据替换成服务商文档里的实际值就可以。
+这份 README 用 `openrouter` 当主示例。你也可以照样配置 Vertex AI、AWS 托管网关，或者你自己的兼容中转；把 URL 和凭据替换成服务商文档里的实际值就可以。
 
 ---
 
@@ -40,7 +40,7 @@
 
 ### 用 Claude Code 或 Codex 一键安装
 
-下面这段提示词不要折叠，直接复制到 Claude Code 或 Codex 里就能用。它会安装 `ccswitch`、添加第一个 provider、创建别名，并做基础验证。
+下面这段提示词直接复制到 Claude Code 或 Codex 里就能用。它会安装 `ccswitch`、添加第一个 provider、创建别名，并做基础验证。
 
 ```text
 请帮我安装 ccswitch：
@@ -69,7 +69,7 @@ https://github.com/Boulea7/ccswitch-terminal
 2. `ccsw op`
 3. `cxsw op`
 4. `ccsw show`
-5. 用简短中文说明改了什么
+5. 最后用简体中文简短说明改了什么
 ```
 
 如果你想换成别的例子，流程完全一样，只需要换 provider 名和别名：
@@ -114,7 +114,7 @@ bash ~/ccsw/bootstrap.sh --dry-run
 
 ## 60 秒配好第一个 Provider
 
-如果你想自己配第一条 provider，这条路径最短。
+如果你想自己配第一条 provider，可以按这个顺序来。
 
 1. 先把密钥写进 `~/ccsw/.env.local`。
 
@@ -156,13 +156,13 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
-### 别名约定
+### Alias（缩写）约定
 
-如果你准备长期用 `ccswitch`，建议把 alias 当成默认习惯，而不是偶尔才用的快捷方式。
+如果你准备长期用 `ccswitch`，建议把 alias（缩写）当成默认习惯，而不是偶尔才用的快捷方式。
 
 推荐缩写可以保持简短、稳定、好记：
 
-| Provider | 推荐 alias | 说明 |
+| Provider | 推荐 alias（缩写） | 说明 |
 |----------|------------|------|
 | `openrouter` | `op` | 主 README 默认示例 |
 | `vertex` | `vx` | 比 `vertex` 更短，和 `op` 风格一致 |
@@ -357,9 +357,9 @@ wire_api = "responses"
 </details>
 
 <details>
-<summary><b>是不是建议每个 provider 都先配一个 alias？</b></summary>
+<summary><b>是不是建议每个 provider 都先配一个 alias（缩写）？</b></summary>
 
-建议。尤其是你会频繁切换时，alias 会让 `ccsw op`、`cxsw op`、`ccsw all vx` 这类命令更短，也更适合写进 profile。
+建议。尤其是你会频繁切换时，alias（缩写）会让 `ccsw op`、`cxsw op`、`ccsw all vx` 这类命令更短，也更适合写进 profile。
 
 一个简单的约定是：
 
@@ -423,7 +423,7 @@ python3 -m unittest discover -s tests -q
 
 ## 依赖
 
-只需要 Python 3.9+，不需要额外安装第三方包。
+需要的只有 Python 3.9+。项目本身不依赖第三方包，也不需要额外 `pip install` 一串依赖。
 
 ## License
 
