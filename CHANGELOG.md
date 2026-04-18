@@ -8,6 +8,16 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ## Unreleased
 
+## v0.1.1 - 2026-04-18
+
+### Changed
+
+- Polished the public release-facing docs after `v0.1.0`, including wording cleanups across the multilingual README set plus the support, contribution, and releasing guides, without changing the documented CLI behavior.
+
+### Fixed
+
+- Pinned the GitHub Actions `ShellCheck` download to `v0.11.0` in CI so the workflow no longer depends on the broken `stable` asset alias and can go green again on `main`.
+
 ## v0.1.0 - 2026-04-16
 
 ### Added
