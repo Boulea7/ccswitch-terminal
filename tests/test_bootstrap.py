@@ -70,7 +70,18 @@ class BootstrapScriptTests(unittest.TestCase):
                 '      python3 "$_CCSW_PY" claude "$@" ;;',
                 "  esac",
                 "}",
-                'cxsw() { eval "$(python3 "$_CCSW_PY" codex "$@")"; }',
+                "cxsw() {",
+                '  case "${1:-}" in',
+                "    sync)",
+                "      shift",
+                '      python3 "$_CCSW_PY" sync "$@" ;;',
+                "    share)",
+                "      shift",
+                '      python3 "$_CCSW_PY" share codex "$@" ;;',
+                "    *)",
+                '      eval "$(python3 "$_CCSW_PY" codex "$@")" ;;',
+                "  esac",
+                "}",
                 'gcsw() { python3 "$_CCSW_PY" gemini "$@"; }',
                 'ccswitch() { python3 "$_CCSW_PY" "$@"; }',
                 "",
@@ -108,7 +119,7 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertTrue((ccswitch_dir / "generated").exists())
             self.assertTrue((ccswitch_dir / "tmp").exists())
             self.assertEqual(rc_content.count("ccsw() {"), 1)
-            self.assertEqual(rc_content.count('cxsw() { eval "$(python3 "$_CCSW_PY" codex "$@")"; }'), 1)
+            self.assertEqual(rc_content.count("cxsw() {"), 1)
             self.assertEqual(rc_content.count('gcsw() { eval "$(python3 "$_CCSW_PY" gemini "$@")"; }'), 1)
             self.assertEqual(rc_content.count('opsw() { eval "$(python3 "$_CCSW_PY" opencode "$@")"; }'), 1)
             self.assertEqual(rc_content.count('clawsw() { eval "$(python3 "$_CCSW_PY" openclaw "$@")"; }'), 1)
@@ -117,7 +128,9 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertEqual(rc_content.count('source "' + str(ccswitch_dir / "opencode.env") + '"'), 1)
             self.assertEqual(rc_content.count('source "' + str(ccswitch_dir / "openclaw.env") + '"'), 1)
             self.assertIn("codex|gemini|opencode|openclaw|all|profile|rollback", rc_content)
-            self.assertIn("claude|list|show|add|remove|alias|settings|doctor|history|repair|import|run", rc_content)
+            self.assertIn("claude|list|show|add|remove|alias|settings|sync|share|doctor|history|repair|import|run", rc_content)
+            self.assertIn('python3 "$_CCSW_PY" sync "$@"', rc_content)
+            self.assertIn('python3 "$_CCSW_PY" share codex "$@"', rc_content)
 
     def test_bootstrap_upgrades_legacy_wrapper_block_and_refreshes_ccsw_py(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,7 +159,9 @@ class BootstrapScriptTests(unittest.TestCase):
             self.assertIn(f"_CCSW_PY={str(REPO_ROOT / 'ccsw.py')}", rc_content)
             self.assertIn("codex|gemini|opencode|openclaw|all", rc_content)
             self.assertIn("codex|gemini|opencode|openclaw|all|profile|rollback", rc_content)
-            self.assertIn("claude|list|show|add|remove|alias|settings|doctor|history|repair|import|run", rc_content)
+            self.assertIn("claude|list|show|add|remove|alias|settings|sync|share|doctor|history|repair|import|run", rc_content)
+            self.assertIn('python3 "$_CCSW_PY" sync "$@"', rc_content)
+            self.assertIn('python3 "$_CCSW_PY" share codex "$@"', rc_content)
 
     def test_bootstrap_uses_bashrc_by_default_for_bash_shell(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

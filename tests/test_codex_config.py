@@ -110,6 +110,42 @@ class UpsertRootTomlStringTests(unittest.TestCase):
             self.assertIn('base_url = "https://relay-beta.example/codex/v1"\n', content)
             self.assertNotIn('base_url = "https://old.example/v1"\n', content)
 
+    def test_upsert_codex_chatgpt_config_reverts_to_builtin_openai_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                'model = "gpt-5.4"\nopenai_base_url = "https://old.example/v1"\nmodel_provider = "ccswitch_active"\n\n[model_providers.ccswitch_active]\nname = "ccswitch: old"\nbase_url = "https://old.example/v1"\nenv_key = "OPENAI_API_KEY"\nsupports_websockets = false\nwire_api = "responses"\n\n[projects."/tmp"]\ntrust_level = "trusted"\n',
+                encoding="utf-8",
+            )
+
+            ccsw.upsert_codex_chatgpt_config(path)
+
+            content = path.read_text(encoding="utf-8")
+            self.assertIn('model_provider = "openai"\n', content)
+            self.assertNotIn('openai_base_url = "https://old.example/v1"\n', content)
+            self.assertNotIn("[model_providers.ccswitch_active]\n", content)
+            self.assertIn('[projects."/tmp"]\ntrust_level = "trusted"\n', content)
+
+    def test_upsert_codex_chatgpt_shared_config_uses_requires_openai_auth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.toml"
+            path.write_text(
+                'model = "gpt-5.4"\nopenai_base_url = "https://old.example/v1"\nmodel_provider = "openai"\n',
+                encoding="utf-8",
+            )
+
+            ccsw.upsert_codex_chatgpt_shared_config(path, "pro")
+
+            content = path.read_text(encoding="utf-8")
+            self.assertIn('model_provider = "ccswitch_active"\n', content)
+            self.assertIn('[model_providers.ccswitch_active]\n', content)
+            self.assertIn('name = "ccswitch: pro"\n', content)
+            self.assertIn("requires_openai_auth = true\n", content)
+            self.assertIn("supports_websockets = true\n", content)
+            self.assertIn('wire_api = "responses"\n', content)
+            self.assertNotIn("openai_base_url", content)
+            self.assertNotIn('env_key = "OPENAI_API_KEY"\n', content)
+
 
 class CodexBaseUrlSelectionTests(unittest.TestCase):
     def test_prefers_primary_base_url_when_primary_is_available(self) -> None:
@@ -144,6 +180,40 @@ class CodexBaseUrlSelectionTests(unittest.TestCase):
 
 
 class CodexDoctorProbeTests(unittest.TestCase):
+    def test_probe_codex_target_chatgpt_mode_uses_local_config_checks_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps({"auth_mode": "chatgpt", "chatgpt_access_token": "demo"}),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text(
+                'model = "gpt-5.4"\nmodel_provider = "openai"\n',
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {},
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+            conf = {
+                "auth_mode": "chatgpt",
+            }
+
+            with patch("ccsw._http_probe") as http_probe:
+                status, detail = ccsw._probe_codex_target(store, conf, "pro", deep=True)
+
+        self.assertEqual(status, "ok")
+        self.assertEqual(detail["reason_code"], "ready")
+        self.assertEqual(detail["config_checks"]["model_provider"], "openai")
+        self.assertFalse(detail["config_checks"]["auth_has_openai_api_key"])
+        http_probe.assert_not_called()
+
     def test_probe_codex_target_deep_discovers_model_from_models_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -658,6 +728,112 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 "unset OPENAI_BASE_URL\nexport OPENAI_API_KEY='dummy-codex-token'\n",
             )
 
+    def test_write_codex_chatgpt_mode_clears_conflicting_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "OPENAI_API_KEY": "old-api-key",
+                        "chatgpt_access_token": "session-token",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path.write_text(
+                'model = "gpt-5.4"\nopenai_base_url = "https://relay.example/v1"\nmodel_provider = "ccswitch_active"\n\n[model_providers.ccswitch_active]\nname = "ccswitch: old"\nbase_url = "https://relay.example/v1"\nenv_key = "OPENAI_API_KEY"\nsupports_websockets = false\nwire_api = "responses"\n',
+                encoding="utf-8",
+            )
+
+            conf = {
+                "auth_mode": "chatgpt",
+            }
+
+            with patch.object(ccsw, "CODEX_AUTH", auth_path), patch.object(
+                ccsw, "CODEX_CONFIG", config_path
+            ), patch.object(ccsw, "CODEX_ENV_PATH", env_path):
+                ccsw.write_codex(conf, "pro")
+
+            auth = json.loads(auth_path.read_text(encoding="utf-8"))
+            config = config_path.read_text(encoding="utf-8")
+            codex_env = env_path.read_text(encoding="utf-8")
+
+            self.assertEqual(auth, {"chatgpt_access_token": "session-token"})
+            self.assertIn('model_provider = "openai"\n', config)
+            self.assertNotIn('openai_base_url = "https://relay.example/v1"\n', config)
+            self.assertNotIn("[model_providers.ccswitch_active]\n", config)
+            self.assertEqual(
+                codex_env,
+                "unset OPENAI_API_KEY\nunset OPENAI_BASE_URL\n",
+            )
+
+    def test_write_codex_chatgpt_mode_uses_shared_lane_when_sync_setting_is_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "chatgpt_access_token": "session-token",
+                        "OPENAI_API_KEY": "old-api-key",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path.write_text(
+                'model = "gpt-5.4"\nmodel_provider = "openai"\n',
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {},
+                "profiles": {},
+                "settings": {
+                    "codex_config_dir": str(codex_dir),
+                    ccsw.CODEX_SYNC_SETTING_KEY: True,
+                },
+            }
+            conf = {"auth_mode": "chatgpt"}
+
+            with patch.object(ccsw, "CODEX_AUTH", auth_path), patch.object(
+                ccsw, "CODEX_CONFIG", config_path
+            ), patch.object(ccsw, "CODEX_ENV_PATH", env_path):
+                ccsw.write_codex(conf, "pro", store)
+
+            auth = json.loads(auth_path.read_text(encoding="utf-8"))
+            config = config_path.read_text(encoding="utf-8")
+            codex_env = env_path.read_text(encoding="utf-8")
+
+            self.assertEqual(
+                auth,
+                {
+                    "auth_mode": "chatgpt",
+                    "chatgpt_access_token": "session-token",
+                },
+            )
+            self.assertIn('model_provider = "ccswitch_active"\n', config)
+            self.assertIn('[model_providers.ccswitch_active]\n', config)
+            self.assertIn("requires_openai_auth = true\n", config)
+            self.assertIn("supports_websockets = true\n", config)
+            self.assertIn('wire_api = "responses"\n', config)
+            self.assertNotIn('env_key = "OPENAI_API_KEY"\n', config)
+            self.assertEqual(
+                codex_env,
+                "unset OPENAI_API_KEY\nunset OPENAI_BASE_URL\n",
+            )
+
     def test_codex_switch_writes_custom_provider_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -723,6 +899,80 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 "unset OPENAI_BASE_URL\nexport OPENAI_API_KEY='dummy-codex-token'\n",
             )
             self.assertIn("export OPENAI_API_KEY='dummy-codex-token'", proc.stdout)
+            self.assertIn("unset OPENAI_BASE_URL", proc.stdout)
+
+    def test_codex_switch_to_chatgpt_auth_mode_clears_provider_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_home = root / "home"
+            fake_home.mkdir()
+            codex_dir = fake_home / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "OPENAI_API_KEY": "old-provider-token",
+                        "tokens": {"access_token": "session-token"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text(
+                'model = "gpt-5.4"\nopenai_base_url = "https://relay-alpha.example/openai/v1"\nmodel_provider = "ccswitch_active"\n\n[model_providers.ccswitch_active]\nname = "ccswitch: demo-provider"\nbase_url = "https://relay-alpha.example/openai/v1"\nenv_key = "OPENAI_API_KEY"\nsupports_websockets = false\nwire_api = "responses"\n',
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["CCSW_HOME"] = str(root / ".ccswitch")
+            env["CCSW_FAKE_HOME"] = str(fake_home)
+            env["CCSW_LOCAL_ENV_PATH"] = str(root / ".env.local")
+            (root / ".env.local").write_text("", encoding="utf-8")
+
+            subprocess.run(
+                [
+                    "python3",
+                    "ccsw.py",
+                    "add",
+                    "pro",
+                    "--codex-auth-mode",
+                    "chatgpt",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            proc = subprocess.run(
+                ["python3", "ccsw.py", "codex", "pro"],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            auth = json.loads((codex_dir / "auth.json").read_text(encoding="utf-8"))
+            config = (codex_dir / "config.toml").read_text(encoding="utf-8")
+            codex_env = (root / ".ccswitch" / "codex.env").read_text(encoding="utf-8")
+
+            self.assertEqual(
+                auth,
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "session-token"},
+                },
+            )
+            self.assertIn('model_provider = "openai"\n', config)
+            self.assertNotIn("openai_base_url", config)
+            self.assertNotIn("[model_providers.ccswitch_active]\n", config)
+            self.assertEqual(
+                codex_env,
+                "unset OPENAI_API_KEY\nunset OPENAI_BASE_URL\n",
+            )
+            self.assertIn("unset OPENAI_API_KEY", proc.stdout)
             self.assertIn("unset OPENAI_BASE_URL", proc.stdout)
 
 if __name__ == "__main__":

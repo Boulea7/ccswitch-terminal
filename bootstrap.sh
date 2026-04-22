@@ -97,14 +97,25 @@ ccsw() {{
       python3 "$_CCSW_PY" "$@" ;;
     codex|gemini|opencode|openclaw|all|profile|rollback)
       eval "$(python3 "$_CCSW_PY" "$@")" ;;
-    claude|list|show|add|remove|alias|settings|doctor|history|repair|import|run)
+    claude|list|show|add|remove|alias|settings|sync|share|doctor|history|repair|import|run)
       python3 "$_CCSW_PY" "$@" ;;
     *)
       python3 "$_CCSW_PY" claude "$@" ;;
   esac
 }}
-# cxsw: codex shortcut (eval built-in, activates OPENAI_API_KEY and refreshes the custom Codex provider config)
-cxsw() {{ eval "$(python3 "$_CCSW_PY" codex "$@")"; }}
+# cxsw: codex shortcut, plus sync/share helpers that do not emit shell exports
+cxsw() {{
+  case "${{1:-}}" in
+    sync)
+      shift
+      python3 "$_CCSW_PY" sync "$@" ;;
+    share)
+      shift
+      python3 "$_CCSW_PY" share codex "$@" ;;
+    *)
+      eval "$(python3 "$_CCSW_PY" codex "$@")" ;;
+  esac
+}}
 # gcsw: gemini shortcut (eval built-in, activates GEMINI_API_KEY)
 gcsw() {{ eval "$(python3 "$_CCSW_PY" gemini "$@")"; }}
 # opsw: opencode shortcut (eval built-in, activates OPENCODE_CONFIG)
@@ -304,6 +315,8 @@ echo "  ccsw show                         # Show active provider per tool"
 echo "  ccsw <provider>                   # Switch Claude Code (short form)"
 echo "  ccsw claude <provider>            # Switch Claude Code (explicit)"
 echo "  cxsw <provider>                   # Switch Codex"
+echo "  cxsw sync on|off|status          # Future Codex session sharing toggle"
+echo "  cxsw share prepare <lane> ...    # Prepare a Codex share recipe"
 echo "  gcsw <provider>                   # Switch Gemini"
 echo "  opsw <provider>                   # Switch OpenCode"
 echo "  clawsw <provider>                 # Switch OpenClaw"
