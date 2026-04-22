@@ -763,7 +763,13 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             config = config_path.read_text(encoding="utf-8")
             codex_env = env_path.read_text(encoding="utf-8")
 
-            self.assertEqual(auth, {"chatgpt_access_token": "session-token"})
+            self.assertEqual(
+                auth,
+                {
+                    "auth_mode": "chatgpt",
+                    "chatgpt_access_token": "session-token",
+                },
+            )
             self.assertIn('model_provider = "openai"\n', config)
             self.assertNotIn('openai_base_url = "https://relay.example/v1"\n', config)
             self.assertNotIn("[model_providers.ccswitch_active]\n", config)

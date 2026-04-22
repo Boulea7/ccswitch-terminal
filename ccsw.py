@@ -1719,7 +1719,8 @@ def _codex_chatgpt_provider_route(store: Optional[Dict[str, Any]]) -> str:
 
 def _codex_has_chatgpt_login_state(auth_data: Dict[str, Any]) -> bool:
     """Return True when auth.json still contains a usable ChatGPT login payload."""
-    if auth_data.get("auth_mode") != CODEX_AUTH_MODE_CHATGPT:
+    auth_mode = auth_data.get("auth_mode")
+    if auth_mode not in (None, CODEX_AUTH_MODE_CHATGPT):
         return False
     if resolve_token(auth_data.get("chatgpt_access_token")):
         return True
@@ -4259,6 +4260,7 @@ def write_codex(
 
         data.pop("OPENAI_API_KEY", None)
         data.pop("OPENAI_BASE_URL", None)
+        data["auth_mode"] = CODEX_AUTH_MODE_CHATGPT
 
         def _persist() -> None:
             save_json(auth_path, data)
