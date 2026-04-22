@@ -89,6 +89,160 @@ class ProductizationStoreTests(unittest.TestCase):
             self.assertEqual(loaded["active"]["claude"], "demo")
             self.assertIn("demo", loaded["providers"])
 
+    def test_cmd_sync_updates_future_session_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {},
+                "profiles": {},
+                "settings": {},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path):
+                ccsw.save_store(store)
+                reloaded = ccsw.load_store()
+                ccsw.cmd_sync(reloaded, "on")
+                reloaded = ccsw.load_store()
+                self.assertTrue(reloaded["settings"][ccsw.CODEX_SYNC_SETTING_KEY])
+                ccsw.cmd_sync(reloaded, "off")
+                reloaded = ccsw.load_store()
+
+            self.assertFalse(reloaded["settings"][ccsw.CODEX_SYNC_SETTING_KEY])
+
+    def test_cmd_share_prepare_saves_recipe_without_touching_live_codex_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            fake_home = root / "home"
+            codex_dir = fake_home / ".codex"
+            codex_dir.mkdir(parents=True)
+            state_db_path = codex_dir / "state_5.sqlite"
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            auth_path.write_text(json.dumps({"auth_mode": "chatgpt"}), encoding="utf-8")
+            config_path.write_text('model_provider = "openai"\n', encoding="utf-8")
+
+            conn = sqlite3.connect(state_db_path)
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE threads (
+                        id TEXT PRIMARY KEY,
+                        rollout_path TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        source TEXT NOT NULL,
+                        model_provider TEXT NOT NULL,
+                        cwd TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        sandbox_policy TEXT NOT NULL,
+                        approval_mode TEXT NOT NULL,
+                        tokens_used INTEGER NOT NULL DEFAULT 0,
+                        has_user_event INTEGER NOT NULL DEFAULT 0,
+                        archived INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO threads(
+                        id, rollout_path, created_at, updated_at, source, model_provider,
+                        cwd, title, sandbox_policy, approval_mode, tokens_used, has_user_event, archived
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "thr-test-1",
+                        "/tmp/rollout.jsonl",
+                        1,
+                        2,
+                        "cli",
+                        "openai",
+                        "/tmp/work",
+                        "Seed thread",
+                        "workspace-write",
+                        "on-request",
+                        0,
+                        1,
+                        0,
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {"pro": {"codex": {"auth_mode": "chatgpt"}}},
+                "profiles": {},
+                "settings": {},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "_HOME", fake_home
+            ), patch("ccsw.os.getcwd", return_value="/tmp/work"):
+                ccsw.save_store(store)
+                reloaded = ccsw.load_store()
+                ccsw.cmd_share_prepare(reloaded, "work", "pro", "last")
+                reloaded = ccsw.load_store()
+
+            lane = reloaded["settings"][ccsw.CODEX_SHARE_SETTING_KEY]["work"]
+            self.assertEqual(lane["source_thread_id"], "thr-test-1")
+            self.assertEqual(lane["target_model_provider"], "openai")
+            self.assertEqual(
+                lane["commands"],
+                [
+                    "cxsw pro",
+                    "codex -C /tmp/work fork --all thr-test-1",
+                ],
+            )
+            self.assertEqual(json.loads(auth_path.read_text(encoding="utf-8")), {"auth_mode": "chatgpt"})
+            self.assertEqual(config_path.read_text(encoding="utf-8"), 'model_provider = "openai"\n')
+
+    def test_cmd_share_prepare_rechecks_provider_inside_state_lock(self) -> None:
+        store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {"p": "pro"},
+            "providers": {"pro": {"codex": {"auth_mode": "chatgpt"}}},
+            "profiles": {},
+            "settings": {},
+        }
+        locked_store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {},
+            "providers": {},
+            "profiles": {},
+            "settings": {},
+            "_revision": 1,
+        }
+
+        with patch("ccsw._get_latest_codex_thread_for_cwd", return_value={
+            "id": "thr-test-1",
+            "title": "Seed thread",
+            "cwd": "/tmp/work",
+            "model_provider": "openai",
+            "updated_at": 2,
+        }), patch("ccsw.os.getcwd", return_value="/tmp/work"), patch(
+            "ccsw._load_fresh_store_from_lock", return_value=locked_store
+        ), patch("ccsw.save_store") as save_store:
+            with self.assertRaises(SystemExit):
+                ccsw.cmd_share_prepare(store, "work", "p", "last")
+
+        save_store.assert_not_called()
+
 
 class RuntimeIsolationTests(unittest.TestCase):
     def test_runtime_paths_follow_env_overrides_after_import(self) -> None:
@@ -1790,6 +1944,35 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
         self.assertEqual(args.command, "repair")
         self.assertEqual(args.tool, "codex")
 
+    def test_build_parser_accepts_codex_chatgpt_auth_mode_flag(self) -> None:
+        parser = ccsw.build_parser()
+
+        args = parser.parse_args(["add", "pro", "--codex-auth-mode", "chatgpt"])
+
+        self.assertEqual(args.command, "add")
+        self.assertEqual(args.name, "pro")
+        self.assertEqual(args.codex_auth_mode, "chatgpt")
+
+    def test_build_parser_accepts_sync_command(self) -> None:
+        parser = ccsw.build_parser()
+
+        args = parser.parse_args(["sync", "on"])
+
+        self.assertEqual(args.command, "sync")
+        self.assertEqual(args.action, "on")
+
+    def test_build_parser_accepts_share_prepare_command(self) -> None:
+        parser = ccsw.build_parser()
+
+        args = parser.parse_args(["share", "codex", "prepare", "work", "pro", "--from", "last"])
+
+        self.assertEqual(args.command, "share")
+        self.assertEqual(args.share_tool, "codex")
+        self.assertEqual(args.share_command, "prepare")
+        self.assertEqual(args.lane, "work")
+        self.assertEqual(args.provider, "pro")
+        self.assertEqual(args.source, "last")
+
     def test_import_current_codex_prefers_ccswitch_active_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1879,6 +2062,37 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
         self.assertEqual(
             store["providers"]["imported"]["codex"]["base_url"],
             "https://selected.example/v1",
+        )
+
+    def test_import_current_codex_detects_chatgpt_auth_mode_without_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps({"auth_mode": "chatgpt", "chatgpt_session": {"access_token": "demo"}}),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text(
+                'model_provider = "openai"\n',
+                encoding="utf-8",
+            )
+
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {},
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch("ccsw.save_store"):
+                ccsw.cmd_import_current(store, "codex", "pro")
+
+        self.assertEqual(
+            store["providers"]["pro"]["codex"],
+            {"auth_mode": "chatgpt"},
         )
 
     def test_import_current_gemini_reads_escaped_secret_from_active_env(self) -> None:
@@ -3837,6 +4051,41 @@ class SecretAndBatchBehaviorTests(unittest.TestCase):
 
         with self.assertRaises(SystemExit):
             ccsw.cmd_add(store, "demo", args)
+
+    def test_cmd_add_accepts_codex_chatgpt_auth_mode_without_secret(self) -> None:
+        store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {},
+            "providers": {},
+            "profiles": {},
+            "settings": {},
+        }
+        args = Namespace(
+            claude_url=None,
+            claude_token=None,
+            codex_url=None,
+            codex_fallback_url=None,
+            codex_token=None,
+            codex_auth_mode="chatgpt",
+            gemini_key=None,
+            gemini_auth_type=None,
+            opencode_url=None,
+            opencode_token=None,
+            opencode_model=None,
+            openclaw_url=None,
+            openclaw_token=None,
+            openclaw_model=None,
+            allow_literal_secrets=False,
+        )
+
+        with patch("ccsw.save_store"):
+            ccsw.cmd_add(store, "pro", args)
+
+        self.assertEqual(
+            store["providers"]["pro"]["codex"],
+            {"auth_mode": "chatgpt"},
+        )
 
     def test_import_current_rejects_literal_secret_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -6397,6 +6646,85 @@ class LeaseAndRuntimeContractTests(unittest.TestCase):
             }
 
             validation = ccsw._safe_local_restore_validation(store, "codex", "demo")
+
+        self.assertEqual(validation["status"], "ok")
+        self.assertEqual(validation["reason_code"], "ready")
+
+    def test_local_restore_validation_for_codex_chatgpt_mode_uses_auth_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps({"auth_mode": "chatgpt", "chatgpt_session": {"access_token": "demo"}}),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text(
+                'model_provider = "openai"\n',
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {
+                    "pro": {
+                        "codex": {
+                            "auth_mode": "chatgpt",
+                        }
+                    }
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            validation = ccsw._safe_local_restore_validation(store, "codex", "pro")
+
+        self.assertEqual(validation["status"], "ok")
+        self.assertEqual(validation["reason_code"], "ready")
+
+    def test_local_restore_validation_for_codex_chatgpt_sync_mode_checks_shared_route(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps({"auth_mode": "chatgpt", "chatgpt_session": {"access_token": "demo"}}),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text(
+                "\n".join(
+                    [
+                        'model_provider = "ccswitch_active"',
+                        "",
+                        "[model_providers.ccswitch_active]",
+                        "requires_openai_auth = true",
+                        "supports_websockets = true",
+                        'wire_api = "responses"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {
+                    "pro": {
+                        "codex": {
+                            "auth_mode": "chatgpt",
+                        }
+                    }
+                },
+                "profiles": {},
+                "settings": {
+                    "codex_config_dir": str(codex_dir),
+                    ccsw.CODEX_SYNC_SETTING_KEY: True,
+                },
+            }
+
+            validation = ccsw._safe_local_restore_validation(store, "codex", "pro")
 
         self.assertEqual(validation["status"], "ok")
         self.assertEqual(validation["reason_code"], "ready")

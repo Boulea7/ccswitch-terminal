@@ -156,6 +156,42 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+如果你想给 Codex CLI 单独保留一个“切回官方 ChatGPT 登录态”的入口，可以再加一个专用 provider：
+
+```bash
+ccsw add pro --codex-auth-mode chatgpt
+cxsw pro
+```
+
+这个模式不会写 `base_url`，也不会继续保留 `OPENAI_API_KEY` 覆盖项；它会把 Codex 切回内置 `openai` provider，并清掉 `OPENAI_BASE_URL` / `OPENAI_API_KEY` 这类会和官方登录态打架的覆盖值。
+
+只要你已经先在 Codex 里完成官方登录，这个 provider 就可以反复切回去。实现上只认 `auth_mode=chatgpt`，不依赖 `chatgpt_plan_type` 的具体字符串，所以像 `prolite`、后续可能出现的 `pro`，以及其他 ChatGPT 订阅登录态都能正常切换。
+
+默认情况下，`cxsw pro` 仍然会走这条原生 `openai` 路径，不会和中转站共享 provider id，也不会改动旧 session。
+
+如果你只想让**后续新开的官方 Codex 会话**进入共享 lane，可以显式打开 future-only 开关：
+
+```bash
+cxsw sync on
+cxsw pro
+cxsw sync status
+cxsw sync off
+```
+
+- `sync on` 只影响你**之后再次执行**的 `cxsw pro`
+- 已经存在的 `openai` / `ccswitch_active` 会话不会被迁移
+- `sync off` 后，再执行一次 `cxsw pro` 就会回到原生 `openai` lane
+
+如果你更想保留默认隔离，只在特殊情况下准备一条“可共享上下文”的新会话，可以先用 share recipe：
+
+```bash
+cxsw share prepare work pro --from last
+cxsw share status work
+cxsw share clear work
+```
+
+`share prepare` 只会保存下一步建议命令，例如 `cxsw pro` 和 `codex fork ...`。它不会自动切换 provider，也不会自动 fork 或进入会话。
+
 ### Alias（缩写）约定
 
 如果你准备长期用 `ccswitch`，建议平时就直接用 alias（缩写），不用把它当成偶尔才会用的快捷方式。
@@ -207,6 +243,12 @@ ccsw show
 ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
+
+# Codex 共享控制（默认关闭）
+cxsw sync on|off|status
+cxsw share prepare <lane> <provider> --from last
+cxsw share status [lane]
+cxsw share clear <lane>
 
 # 复用队列
 ccsw profile add work --codex op,vx --opencode op
@@ -289,6 +331,7 @@ ccsw run codex work -- codex exec "hello"
 
 ```bash
 ccsw import current claude rescued-claude
+ccsw import current codex pro
 ccsw rollback codex
 ccsw repair all
 ```
@@ -327,6 +370,10 @@ wire_api = "responses"
 ```
 
 这对“支持 HTTP Responses、但不支持 Responses WebSocket”的 OpenAI 兼容中转尤其重要。
+
+如果 Codex provider 使用的是 `--codex-auth-mode chatgpt`，`ccswitch` 不会写上面的自定义 block，而是直接把 `model_provider` 切回内置 `openai`，同时清掉 `openai_base_url` 和 `OPENAI_API_KEY` 覆盖项，避免和官方 ChatGPT 登录态互相覆盖。
+
+如果你显式执行 `cxsw sync on`，后续再运行 `cxsw pro` 时，`ccswitch` 才会把 ChatGPT 登录态写到共享 lane 的 `ccswitch_active` provider id。这个开关只影响 future sessions，不会迁移旧会话。
 
 </details>
 

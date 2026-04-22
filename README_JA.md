@@ -196,6 +196,11 @@ ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
 
+cxsw sync on|off|status
+cxsw share prepare <lane> <provider> --from last
+cxsw share status [lane]
+cxsw share clear <lane>
+
 ccsw profile add work --codex op,vx --opencode op
 ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
@@ -264,6 +269,10 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>Codex 0.116+ メモ</b></summary>
 
 Codex では `model_provider` を明示的に書き、必要に応じて `supports_websockets = false` を設定します。
+
+`cxsw pro` はデフォルトでは内蔵 `openai` lane のままです。`cxsw sync on` を明示的に有効にしたあとで再度 `cxsw pro` を実行した場合だけ、将来の公式 ChatGPT セッションを共有 lane に寄せます。既存セッションは移行しません。
+
+`cxsw share prepare ...` は provider 切り替えや session fork を自動実行しません。次に打つべき `cxsw ...` / `codex fork ...` の recipe を保存するだけです。
 
 </details>
 

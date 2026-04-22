@@ -29,6 +29,7 @@ import json
 import io
 import os
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -91,6 +92,8 @@ BACKUP_SUFFIX_FMT = "%Y%m%d-%H%M%S"
 # Stable Codex provider entry managed by ccsw. The active Codex switch rewrites
 # this block instead of mutating built-in provider behavior.
 CODEX_PROVIDER_ID = "ccswitch_active"
+CODEX_BUILTIN_PROVIDER_ID = "openai"
+CODEX_AUTH_MODE_CHATGPT = "chatgpt"
 DOCTOR_JSON_SCHEMA_VERSION = 1
 LOCAL_ENV_INJECTED_KEYS: set[str] = set()
 MANAGED_CHILD_ENV_KEYS = {
@@ -142,10 +145,18 @@ OVERLAY_TOOLS = ("opencode", "openclaw")
 SETTINGS_DEFAULTS = {
     "claude_config_dir": None,
     "codex_config_dir": None,
+    "codex_share_lanes": {},
+    "codex_sync_future_sessions": False,
     "gemini_config_dir": None,
     "opencode_config_dir": None,
     "openclaw_config_dir": None,
 }
+CODEX_SHARE_SETTING_KEY = "codex_share_lanes"
+CODEX_SYNC_SETTING_KEY = "codex_sync_future_sessions"
+CODEX_SHARE_DEFAULT_SOURCE = "last"
+CODEX_SHARE_TOOL = "codex"
+_BOOL_TRUE_LITERALS = {"1", "on", "true", "yes"}
+_BOOL_FALSE_LITERALS = {"0", "off", "false", "no"}
 RETRYABLE_PATTERNS = (
     "connection refused",
     "timed out",
@@ -542,6 +553,11 @@ def resolve_token(val: Optional[Any]) -> Optional[str]:
     if isinstance(val, str) and val.startswith("$"):
         return os.environ.get(val[1:])
     return val if isinstance(val, str) else None
+
+
+def _shell_join(argv: Iterable[str]) -> str:
+    """Render one shell-safe command string for human-facing output."""
+    return " ".join(shlex.quote(part) for part in argv)
 
 
 def _is_env_ref(val: Optional[Any]) -> bool:
@@ -1682,6 +1698,41 @@ def select_codex_base_url(conf: Dict[str, Any]) -> str:
     return primary_url
 
 
+def _codex_uses_chatgpt_auth(conf: Optional[Dict[str, Any]]) -> bool:
+    """Return True when a Codex provider should use the user's ChatGPT login."""
+    return isinstance(conf, dict) and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT
+
+
+def _codex_env_unsets(conf: Optional[Dict[str, Any]]) -> list[str]:
+    """Return environment variables that must be cleared for one Codex auth mode."""
+    if _codex_uses_chatgpt_auth(conf):
+        return ["OPENAI_API_KEY", "OPENAI_BASE_URL"]
+    return ["OPENAI_BASE_URL"]
+
+
+def _codex_chatgpt_provider_route(store: Optional[Dict[str, Any]]) -> str:
+    """Return the provider id route to use for ChatGPT-backed Codex sessions."""
+    if isinstance(store, dict) and _codex_sync_enabled(store):
+        return CODEX_PROVIDER_ID
+    return CODEX_BUILTIN_PROVIDER_ID
+
+
+def _codex_has_chatgpt_login_state(auth_data: Dict[str, Any]) -> bool:
+    """Return True when auth.json still contains a usable ChatGPT login payload."""
+    auth_mode = auth_data.get("auth_mode")
+    if auth_mode not in (None, CODEX_AUTH_MODE_CHATGPT):
+        return False
+    if resolve_token(auth_data.get("chatgpt_access_token")):
+        return True
+    tokens = auth_data.get("tokens")
+    if isinstance(tokens, dict) and resolve_token(tokens.get("access_token")):
+        return True
+    session = auth_data.get("chatgpt_session")
+    if isinstance(session, dict) and resolve_token(session.get("access_token")):
+        return True
+    return False
+
+
 def upsert_root_toml_value(path: Path, key: str, literal: str) -> None:
     """Set a root-level TOML value while preserving the rest of the file."""
     new_line = f"{key} = {literal}"
@@ -1787,6 +1838,45 @@ def replace_toml_table_block(path: Path, header: str, body_lines: list[str]) -> 
     save_text(path, content)
 
 
+def remove_toml_table_block(path: Path, header: str) -> None:
+    """Remove a TOML table block if it exists."""
+    if not path.exists():
+        return
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    multiline_state: Optional[str] = None
+    start_idx: Optional[int] = None
+
+    for idx, line in enumerate(lines):
+        if multiline_state is None and line.strip() == header:
+            start_idx = idx
+            break
+        multiline_state = _advance_toml_multiline_state(line, multiline_state)
+
+    if start_idx is None:
+        return
+
+    multiline_state = None
+    end_idx = len(lines)
+    for idx in range(start_idx + 1, len(lines)):
+        line = lines[idx]
+        if multiline_state is None and _TOML_TABLE_RE.match(line):
+            end_idx = idx
+            break
+        multiline_state = _advance_toml_multiline_state(line, multiline_state)
+    del lines[start_idx:end_idx]
+    while start_idx < len(lines) and not lines[start_idx].strip():
+        del lines[start_idx]
+    while start_idx > 0 and start_idx <= len(lines) and not lines[start_idx - 1].strip():
+        del lines[start_idx - 1]
+        start_idx -= 1
+
+    content = "\n".join(lines)
+    if content:
+        content += "\n"
+    save_text(path, content)
+
+
 def upsert_codex_provider_config(path: Path, provider_name: str, base_url: str) -> None:
     """Configure Codex to use a custom provider that disables websocket transport."""
     upsert_root_toml_string(path, "model_provider", CODEX_PROVIDER_ID)
@@ -1799,6 +1889,29 @@ def upsert_codex_provider_config(path: Path, provider_name: str, base_url: str) 
             f"base_url = {_toml_string(base_url)}",
             'env_key = "OPENAI_API_KEY"',
             "supports_websockets = false",
+            'wire_api = "responses"',
+        ],
+    )
+
+
+def upsert_codex_chatgpt_config(path: Path) -> None:
+    """Restore Codex to the built-in OpenAI provider for ChatGPT login."""
+    upsert_root_toml_string(path, "model_provider", CODEX_BUILTIN_PROVIDER_ID)
+    remove_root_toml_key(path, "openai_base_url")
+    remove_toml_table_block(path, f"[model_providers.{CODEX_PROVIDER_ID}]")
+
+
+def upsert_codex_chatgpt_shared_config(path: Path, provider_name: str) -> None:
+    """Route ChatGPT auth through the shared ccswitch provider lane."""
+    upsert_root_toml_string(path, "model_provider", CODEX_PROVIDER_ID)
+    remove_root_toml_key(path, "openai_base_url")
+    replace_toml_table_block(
+        path,
+        f"[model_providers.{CODEX_PROVIDER_ID}]",
+        [
+            f'name = {_toml_string(f"ccswitch: {provider_name}")}',
+            "requires_openai_auth = true",
+            "supports_websockets = true",
             'wire_api = "responses"',
         ],
     )
@@ -2906,6 +3019,45 @@ def set_setting(store: Dict[str, Any], key: str, value: Any) -> None:
     save_store(store)
 
 
+def _codex_sync_enabled(store: Dict[str, Any]) -> bool:
+    """Return whether future ChatGPT Codex sessions should use the shared lane."""
+    return bool(get_setting(store, CODEX_SYNC_SETTING_KEY, False))
+
+
+def _get_codex_share_lanes(store: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Return prepared Codex share lane recipes."""
+    lanes = get_setting(store, CODEX_SHARE_SETTING_KEY, {})
+    return dict(lanes) if isinstance(lanes, dict) else {}
+
+
+def _set_codex_share_lanes(store: Dict[str, Any], lanes: Dict[str, Dict[str, Any]]) -> None:
+    """Persist prepared Codex share lane recipes."""
+    store.setdefault("settings", {})[CODEX_SHARE_SETTING_KEY] = lanes
+
+
+def _coerce_setting_value(key: str, value: Optional[str]) -> Any:
+    """Parse a CLI setting value according to the setting's default type."""
+    default = SETTINGS_DEFAULTS[key]
+    if value in ("", "null", "none", None):
+        return None
+    if isinstance(default, bool):
+        normalized = str(value).strip().lower()
+        if normalized in _BOOL_TRUE_LITERALS:
+            return True
+        if normalized in _BOOL_FALSE_LITERALS:
+            return False
+        raise ValueError(f"Setting '{key}' expects one of: on/off, true/false, yes/no, 1/0.")
+    if isinstance(default, dict):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Setting '{key}' expects a JSON object.") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Setting '{key}' expects a JSON object.")
+        return parsed
+    return value
+
+
 def ensure_defaults(store: Dict[str, Any]) -> None:
     """Seed default settings and active-tool keys on a loaded store."""
     providers = store.setdefault("providers", {})
@@ -2959,6 +3111,92 @@ def _load_fresh_store_from_lock(fallback_store: Optional[Dict[str, Any]] = None)
         ensure_defaults(fallback_store)
         return fallback_store
     return _load_fresh_store()
+
+
+def _codex_state_db_path() -> Optional[Path]:
+    """Return the newest readable Codex thread state database path."""
+    codex_dir = _runtime_home_dir() / ".codex"
+    preferred = codex_dir / "state_5.sqlite"
+    if preferred.exists():
+        return preferred
+    try:
+        candidates = sorted(
+            (path for path in codex_dir.glob("state_*.sqlite") if path.is_file()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return None
+    return candidates[0] if candidates else None
+
+
+def _open_codex_state_db() -> Optional[sqlite3.Connection]:
+    """Open the Codex thread state DB in read-only mode when present."""
+    try:
+        db_path = _codex_state_db_path()
+    except OSError:
+        return None
+    if not db_path:
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except (OSError, sqlite3.Error):
+        return None
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _normalize_codex_thread_row(row: sqlite3.Row) -> Dict[str, Any]:
+    """Convert one Codex thread row into a plain dictionary."""
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "cwd": row["cwd"],
+        "model_provider": row["model_provider"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _get_codex_thread_record(thread_id: str) -> Optional[Dict[str, Any]]:
+    """Return one Codex thread record by id."""
+    conn = _open_codex_state_db()
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            """
+            SELECT id, title, cwd, model_provider, updated_at
+            FROM threads
+            WHERE id = ?
+            """,
+            (thread_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return _normalize_codex_thread_row(row) if row else None
+
+
+def _get_latest_codex_thread_for_cwd(cwd: str) -> Optional[Dict[str, Any]]:
+    """Return the newest interactive Codex thread for the given cwd."""
+    conn = _open_codex_state_db()
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            """
+            SELECT id, title, cwd, model_provider, updated_at
+            FROM threads
+            WHERE archived = 0
+              AND source = 'cli'
+              AND cwd = ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+            """,
+            (cwd,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return _normalize_codex_thread_row(row) if row else None
 
 
 def _restore_groups_for_tool(
@@ -3074,6 +3312,8 @@ def _preflight_tool_activation(
     if conf is None:
         info(f"[error] Provider '{provider_name}' has no {tool} config.")
         sys.exit(1)
+    if tool == "codex" and _codex_uses_chatgpt_auth(conf):
+        return
     secret_value = conf.get("api_key") if tool == "gemini" else (conf.get("token") or conf.get("api_key"))
     if not resolve_token(secret_value):
         info(f"[error] Provider '{provider_name}' has unresolved {tool} secret.")
@@ -3611,6 +3851,9 @@ def cmd_show(store: Dict[str, Any]) -> None:
             base_url = conf.get("base_url") if conf else None
             fallback_base_url = conf.get("fallback_base_url") if conf else None
             details = []
+            if tool == "codex" and conf and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
+                details.append("auth=chatgpt")
+                details.append(f"route={_codex_chatgpt_provider_route(store)}")
             if base_url:
                 details.append(f"url={base_url}")
             if fallback_base_url:
@@ -3623,6 +3866,7 @@ def cmd_show(store: Dict[str, Any]) -> None:
             info(f"[{tool}] {name}{detail_str}")
         else:
             info(f"[{tool}] (none)")
+    info(f"[codex-sync] future_sessions={'on' if _codex_sync_enabled(store) else 'off'}")
 
 
 def cmd_remove(store: Dict[str, Any], name: str) -> None:
@@ -3783,7 +4027,7 @@ def cmd_add(store: Dict[str, Any], name: str, args: argparse.Namespace) -> None:
 
     has_flags = any([
         args.claude_url, args.claude_token,
-        args.codex_url, args.codex_fallback_url, args.codex_token,
+        args.codex_url, args.codex_fallback_url, args.codex_token, getattr(args, "codex_auth_mode", None),
         args.gemini_key,
         args.opencode_url, args.opencode_token, args.opencode_model,
         args.openclaw_url, args.openclaw_token, args.openclaw_model,
@@ -3805,6 +4049,7 @@ def cmd_add(store: Dict[str, Any], name: str, args: argparse.Namespace) -> None:
 
 def _add_from_flags(conf: Dict[str, Any], args: argparse.Namespace) -> None:
     allow_literal = getattr(args, "allow_literal_secrets", False)
+    codex_auth_mode = getattr(args, "codex_auth_mode", None)
     if args.claude_url or args.claude_token:
         c = conf.get("claude") or {}
         if args.claude_url:
@@ -3816,6 +4061,9 @@ def _add_from_flags(conf: Dict[str, Any], args: argparse.Namespace) -> None:
         conf["claude"] = c
 
     if args.codex_url or args.codex_fallback_url or args.codex_token:
+        if codex_auth_mode == CODEX_AUTH_MODE_CHATGPT:
+            info("[error] --codex-auth-mode chatgpt cannot be combined with --codex-url/--codex-fallback-url/--codex-token.")
+            sys.exit(1)
         c = conf.get("codex") or {}
         if args.codex_url:
             c["base_url"] = args.codex_url
@@ -3824,7 +4072,10 @@ def _add_from_flags(conf: Dict[str, Any], args: argparse.Namespace) -> None:
         if args.codex_token:
             _require_secret_ref("codex token", args.codex_token, allow_literal=allow_literal)
             c["token"] = args.codex_token
+        c.pop("auth_mode", None)
         conf["codex"] = c
+    elif codex_auth_mode == CODEX_AUTH_MODE_CHATGPT:
+        conf["codex"] = {"auth_mode": CODEX_AUTH_MODE_CHATGPT}
 
     if args.gemini_key:
         c = conf.get("gemini") or {}
@@ -3991,6 +4242,49 @@ def write_codex(
     write_activation_file: bool = True,
 ) -> Optional[list]:
     """Write Codex auth.json + config.toml. Returns env pairs on success, None on failure."""
+    if _codex_uses_chatgpt_auth(conf):
+        provider_route = _codex_chatgpt_provider_route(store)
+        paths = get_tool_paths(store, "codex")
+        auth_path = paths["auth"]
+        config_path = paths["config"]
+
+        data = load_json(auth_path)
+        if not _codex_has_chatgpt_login_state(data):
+            info(
+                "[codex] Skipped: ChatGPT login is missing or incomplete in auth.json. "
+                "Run `codex login` first, then try `cxsw pro` again."
+            )
+            return None
+        auth_bak = backup_file(auth_path, enabled=create_backup)
+        config_bak = backup_file(config_path, enabled=create_backup)
+
+        data.pop("OPENAI_API_KEY", None)
+        data.pop("OPENAI_BASE_URL", None)
+        data["auth_mode"] = CODEX_AUTH_MODE_CHATGPT
+
+        def _persist() -> None:
+            save_json(auth_path, data)
+            if provider_route == CODEX_PROVIDER_ID:
+                upsert_codex_chatgpt_shared_config(config_path, provider_name)
+            else:
+                upsert_codex_chatgpt_config(config_path)
+            if write_activation_file:
+                write_shell_exports(_codex_env_path(), [], unsets=_codex_env_unsets(conf))
+
+        tracked_paths = [auth_path, config_path]
+        if write_activation_file:
+            tracked_paths.append(_codex_env_path())
+        _write_with_file_restore(tracked_paths, _persist)
+        if auth_bak:
+            info(f"[codex] Backed up auth.json -> {auth_bak.name}")
+        if config_bak:
+            info(f"[codex] Backed up config.toml -> {config_bak.name}")
+        info(f"[codex] Updated {auth_path}")
+        info(f"[codex] Updated {config_path}")
+        if write_activation_file:
+            info(f"[codex] codex.env updated at {_codex_env_path()}")
+        return []
+
     token = resolve_token(conf.get("token"))
     base_url = select_codex_base_url(conf)
 
@@ -4016,7 +4310,11 @@ def write_codex(
         save_json(auth_path, data)
         upsert_codex_provider_config(config_path, provider_name, base_url)
         if write_activation_file:
-            write_shell_exports(_codex_env_path(), [("OPENAI_API_KEY", token)], unsets=["OPENAI_BASE_URL"])
+            write_shell_exports(
+                _codex_env_path(),
+                [("OPENAI_API_KEY", token)],
+                unsets=_codex_env_unsets(conf),
+            )
 
     tracked_paths = [auth_path, config_path]
     if write_activation_file:
@@ -4348,6 +4646,18 @@ def _local_restore_validation(
         live = _read_current_codex(store)
         if not live:
             return {"status": "failed", "reason_code": "live_config_missing"}
+        if _codex_uses_chatgpt_auth(conf):
+            expected_route = _codex_chatgpt_provider_route(store)
+            mismatch_fields = []
+            if live.get("auth_mode") != CODEX_AUTH_MODE_CHATGPT:
+                mismatch_fields.append("auth_mode")
+            if live.get("provider_route") != expected_route:
+                mismatch_fields.append("provider_route")
+            return {
+                "status": "ok" if not mismatch_fields else "degraded",
+                "reason_code": "ready" if not mismatch_fields else "live_config_mismatch",
+                "mismatch_fields": mismatch_fields,
+            }
         expected_base_urls = {
             url
             for url in (conf.get("base_url"), conf.get("fallback_base_url"))
@@ -4453,7 +4763,7 @@ def activate_tool_for_subprocess(
             create_backup=create_backup,
             write_activation_file=should_write_activation_files,
         )
-        unsets = ["OPENAI_BASE_URL"]
+        unsets = _codex_env_unsets(conf)
     elif tool == "gemini":
         exports = write_gemini(
             conf,
@@ -5208,7 +5518,11 @@ def cmd_settings_set(store: Dict[str, Any], key: str, value: Optional[str]) -> N
     if key not in SETTINGS_DEFAULTS:
         info(f"[error] Unknown setting key: {key}")
         sys.exit(1)
-    normalized = None if value in ("", "null", "none", None) else value
+    try:
+        normalized = _coerce_setting_value(key, value)
+    except ValueError as exc:
+        info(f"[error] {exc}")
+        sys.exit(1)
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
         previous_value = get_setting(store, key)
@@ -5233,6 +5547,158 @@ def cmd_settings_set(store: Dict[str, Any], key: str, value: Optional[str]) -> N
     info(f"Setting updated: {key}={normalized!r}")
 
 
+def cmd_sync(store: Dict[str, Any], action: str) -> None:
+    """Toggle whether future ChatGPT Codex sessions use the shared provider lane."""
+    if action == "status":
+        info(
+            "Codex future-session sync is "
+            + ("on" if _codex_sync_enabled(store) else "off")
+            + "."
+        )
+        return
+    desired = action == "on"
+    with _state_lock():
+        store = _load_fresh_store_from_lock(store)
+        current = _codex_sync_enabled(store)
+        if current == desired:
+            info(f"Codex future-session sync is already {'on' if desired else 'off'}.")
+            return
+        store.setdefault("settings", {})[CODEX_SYNC_SETTING_KEY] = desired
+        save_store(store, expected_revision=store.get("_revision"))
+    info(f"Codex future-session sync {'enabled' if desired else 'disabled'}.")
+    info("This only affects future `cxsw pro` runs. Existing sessions stay unchanged.")
+
+
+def _codex_share_recipe_commands(cwd: str, provider_name: str, thread_id: str) -> list[str]:
+    """Build the shell commands for one prepared share recipe."""
+    return [
+        _shell_join(["cxsw", provider_name]),
+        _shell_join(["codex", "-C", cwd, "fork", "--all", thread_id]),
+    ]
+
+
+def _codex_target_model_provider_id(store: Dict[str, Any], conf: Dict[str, Any]) -> str:
+    """Return the Codex provider id expected after switching to this provider."""
+    if _codex_uses_chatgpt_auth(conf):
+        return _codex_chatgpt_provider_route(store)
+    return CODEX_PROVIDER_ID
+
+
+def _format_codex_share_lane(lane: str, payload: Dict[str, Any]) -> list[str]:
+    """Render one prepared Codex share lane for terminal output."""
+    lines = [
+        f"[{lane}] provider={payload['provider']} target_model_provider={payload['target_model_provider']}",
+        f"  cwd={payload['cwd']}",
+        f"  source={payload['source_selector']} -> {payload['source_thread_id']} ({payload['source_model_provider']})",
+    ]
+    if payload.get("source_title"):
+        lines.append(f"  title={payload['source_title']}")
+    lines.append(f"  prepared_at={payload['prepared_at']}")
+    lines.append("  next:")
+    lines.extend(f"    {command}" for command in payload.get("commands", []))
+    return lines
+
+
+def cmd_share_prepare(store: Dict[str, Any], lane: str, provider_name: str, source: str) -> None:
+    """Prepare a Codex share recipe without switching or forking anything."""
+    if not _NAME_RE.match(lane):
+        info(f"[error] Share lane '{lane}' is invalid. Use only letters, digits, _, ., -")
+        sys.exit(1)
+    canonical = resolve_alias(store, provider_name)
+    providers = store.get("providers", {})
+    provider = providers.get(canonical)
+    conf = provider.get(CODEX_SHARE_TOOL) if isinstance(provider, dict) else None
+    if not isinstance(conf, dict):
+        info(f"[error] Provider '{provider_name}' has no codex config.")
+        sys.exit(1)
+
+    cwd = os.getcwd()
+    if source == CODEX_SHARE_DEFAULT_SOURCE:
+        source_thread = _get_latest_codex_thread_for_cwd(cwd)
+        if not source_thread:
+            info(
+                "[error] No recent Codex thread found for the current directory. "
+                "Use --from <thread-id> to prepare a recipe from an explicit thread."
+            )
+            sys.exit(1)
+    else:
+        source_thread = _get_codex_thread_record(source)
+        if not source_thread:
+            info(f"[error] Codex thread '{source}' was not found in the local state DB.")
+            sys.exit(1)
+
+    recipe_cwd = source_thread.get("cwd") or cwd
+    recipe = {
+        "lane": lane,
+        "tool": CODEX_SHARE_TOOL,
+        "provider": canonical,
+        "target_model_provider": _codex_target_model_provider_id(store, conf),
+        "cwd": recipe_cwd,
+        "source_selector": source,
+        "source_thread_id": source_thread["id"],
+        "source_model_provider": source_thread["model_provider"],
+        "source_title": source_thread.get("title"),
+        "prepared_at": datetime.now().isoformat(timespec="seconds"),
+        "commands": _codex_share_recipe_commands(recipe_cwd, canonical, source_thread["id"]),
+    }
+
+    with _state_lock():
+        store = _load_fresh_store_from_lock(store)
+        canonical = resolve_alias(store, provider_name)
+        providers = store.get("providers", {})
+        provider = providers.get(canonical)
+        conf = provider.get(CODEX_SHARE_TOOL) if isinstance(provider, dict) else None
+        if not isinstance(conf, dict):
+            info(f"[error] Provider '{provider_name}' has no codex config.")
+            sys.exit(1)
+        lanes = _get_codex_share_lanes(store)
+        recipe["provider"] = canonical
+        recipe["target_model_provider"] = _codex_target_model_provider_id(store, conf)
+        recipe["commands"] = _codex_share_recipe_commands(recipe_cwd, canonical, source_thread["id"])
+        lanes[lane] = recipe
+        _set_codex_share_lanes(store, lanes)
+        save_store(store, expected_revision=store.get("_revision"))
+
+    info(f"Prepared Codex share lane: {lane}")
+    for line in _format_codex_share_lane(lane, recipe):
+        info(line)
+    info("No live provider switch or session fork was performed.")
+
+
+def cmd_share_status(store: Dict[str, Any], lane: Optional[str]) -> None:
+    """Show prepared Codex share lane recipes."""
+    lanes = _get_codex_share_lanes(store)
+    if lane:
+        payload = lanes.get(lane)
+        if not payload:
+            info(f"[error] Share lane '{lane}' not found.")
+            sys.exit(1)
+        for line in _format_codex_share_lane(lane, payload):
+            info(line)
+        return
+    if not lanes:
+        info("No Codex share lanes prepared.")
+        return
+    info("Codex share lanes:")
+    for current_lane in sorted(lanes):
+        for line in _format_codex_share_lane(current_lane, lanes[current_lane]):
+            info(line)
+
+
+def cmd_share_clear(store: Dict[str, Any], lane: str) -> None:
+    """Delete one prepared Codex share lane recipe."""
+    with _state_lock():
+        store = _load_fresh_store_from_lock(store)
+        lanes = _get_codex_share_lanes(store)
+        if lane not in lanes:
+            info(f"[error] Share lane '{lane}' not found.")
+            sys.exit(1)
+        del lanes[lane]
+        _set_codex_share_lanes(store, lanes)
+        save_store(store, expected_revision=store.get("_revision"))
+    info(f"Cleared Codex share lane: {lane}")
+
+
 def _read_current_claude(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     paths = get_tool_paths(store, "claude")
     data = load_json(paths["settings"])
@@ -5251,15 +5717,30 @@ def _read_current_claude(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _read_current_codex(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     paths = get_tool_paths(store, "codex")
     auth = load_json(paths["auth"])
-    token = auth.get("OPENAI_API_KEY")
-    if not token:
-        return None
     content = paths["config"].read_text(encoding="utf-8") if paths["config"].exists() else ""
-    conf: Dict[str, Any] = {"token": token}
     current_provider = _read_toml_string_value(content, "model_provider")
+    root_openai_base_url = _read_toml_string_value(content, "openai_base_url")
     selected_block = None
     if current_provider:
         selected_block = _extract_toml_table_body(content, f"model_providers.{current_provider}")
+    selected_requires_openai_auth = (
+        _read_toml_literal_value(selected_block, "requires_openai_auth") == "true"
+        if selected_block
+        else False
+    )
+    if (
+        auth.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT
+        and not auth.get("OPENAI_API_KEY")
+        and not root_openai_base_url
+        and (current_provider == CODEX_BUILTIN_PROVIDER_ID or selected_requires_openai_auth)
+    ):
+        provider_route = CODEX_PROVIDER_ID if current_provider == CODEX_PROVIDER_ID else CODEX_BUILTIN_PROVIDER_ID
+        return {"auth_mode": CODEX_AUTH_MODE_CHATGPT, "provider_route": provider_route}
+
+    token = auth.get("OPENAI_API_KEY")
+    if not token:
+        return None
+    conf: Dict[str, Any] = {"token": token}
     if selected_block:
         selected_base_url = _read_toml_string_value(selected_block, "base_url")
         if selected_base_url:
@@ -5323,12 +5804,16 @@ def _clear_absent_import_fields(
 ) -> None:
     """Drop optional metadata that is no longer present in the live config."""
     optional_fields: Dict[str, tuple[str, ...]] = {
+        "codex": ("auth_mode", "provider_route"),
         "gemini": ("auth_type",),
         "opencode": ("headers", "npm", "model"),
         "openclaw": ("api", "profile", "model"),
     }
     for field in optional_fields.get(tool, ()):
         if field not in imported_conf:
+            merged_conf.pop(field, None)
+    if tool == "codex" and imported_conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
+        for field in ("token", "base_url", "fallback_base_url", "provider_route"):
             merged_conf.pop(field, None)
 
 
@@ -5479,6 +5964,8 @@ def cmd_import_current(
             if not allow_literal_secrets and not _is_env_ref(preserved):
                 _reject_literal_secret("imported gemini api_key")
             conf["api_key"] = preserved
+        elif tool == "codex" and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
+            pass
         else:
             preserved = _preserve_secret_ref(existing_conf.get("token"), conf.get("token"))
             if not allow_literal_secrets and not _is_env_ref(preserved):
@@ -6146,6 +6633,78 @@ def _probe_codex_target(
     deep: bool = False,
 ) -> tuple[str, Dict[str, Any]]:
     """Run a stronger Codex compatibility probe."""
+    if _codex_uses_chatgpt_auth(conf):
+        paths = get_tool_paths(store, "codex")
+        auth_data = load_json(paths["auth"])
+        config_content = paths["config"].read_text(encoding="utf-8") if paths["config"].exists() else ""
+        current_provider = _read_toml_string_value(config_content, "model_provider")
+        root_openai_base_url = _read_toml_string_value(config_content, "openai_base_url")
+        provider_block = (
+            _extract_toml_table_body(config_content, f"model_providers.{current_provider}")
+            if current_provider
+            else None
+        ) or ""
+        config_checks = {
+            "auth_exists": paths["auth"].exists(),
+            "auth_mode": auth_data.get("auth_mode"),
+            "auth_has_openai_api_key": bool(auth_data.get("OPENAI_API_KEY")),
+            "config_exists": paths["config"].exists(),
+            "model_provider": current_provider,
+            "openai_base_url": root_openai_base_url,
+            "provider_requires_openai_auth": _read_toml_literal_value(provider_block, "requires_openai_auth"),
+            "provider_supports_websockets": _read_toml_literal_value(provider_block, "supports_websockets"),
+            "provider_wire_api": _read_toml_string_value(provider_block, "wire_api"),
+        }
+        mismatch_fields: list[str] = []
+        if config_checks["auth_mode"] != CODEX_AUTH_MODE_CHATGPT:
+            mismatch_fields.append("auth_mode")
+        expected_route = _codex_chatgpt_provider_route(store)
+        provider_supports_chatgpt = (
+            config_checks["model_provider"] == CODEX_BUILTIN_PROVIDER_ID
+            or config_checks["provider_requires_openai_auth"] == "true"
+        )
+        if not provider_supports_chatgpt:
+            mismatch_fields.append("model_provider")
+        elif config_checks["model_provider"] != expected_route:
+            mismatch_fields.append("provider_route")
+        if config_checks["model_provider"] == CODEX_PROVIDER_ID:
+            if config_checks["provider_supports_websockets"] != "true":
+                mismatch_fields.append("provider_supports_websockets")
+            if config_checks["provider_wire_api"] != "responses":
+                mismatch_fields.append("provider_wire_api")
+        if config_checks["openai_base_url"]:
+            mismatch_fields.append("openai_base_url")
+        if config_checks["auth_has_openai_api_key"]:
+            mismatch_fields.append("auth_has_openai_api_key")
+        config_status = "ok" if not mismatch_fields else "degraded"
+        checks = {
+            "live_auth_check": _make_doctor_check(
+                "ok" if config_checks["auth_mode"] == CODEX_AUTH_MODE_CHATGPT else "failed",
+                "auth_ready" if config_checks["auth_mode"] == CODEX_AUTH_MODE_CHATGPT else "auth_missing",
+                path=str(paths["auth"]),
+                exists=config_checks["auth_exists"],
+            ),
+            "live_provider_block_check": _make_doctor_check(
+                config_status,
+                "config_ready" if config_status == "ok" else "config_mismatch",
+                path=str(paths["config"]),
+                mismatch_fields=mismatch_fields,
+                config_checks=config_checks,
+            ),
+        }
+        status = _merge_status(config_status, checks["live_auth_check"]["status"])
+        return status, {
+            "token_resolved": config_checks["auth_mode"] == CODEX_AUTH_MODE_CHATGPT,
+            "primary_base_url": None,
+            "fallback_base_url": None,
+            "selected_base_url": None,
+            "reason_code": "ready" if status == "ok" else "config_mismatch",
+            "probe_mode": "local",
+            "config_checks": config_checks,
+            "checks": checks,
+            "mismatch_fields": mismatch_fields,
+        }
+
     token_value = resolve_token(conf.get("token"))
     if not token_value:
         return "missing", {"reason_code": "token_missing", "token_resolved": False}
@@ -6941,6 +7500,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_p.add_argument("--codex-url", metavar="URL")
     add_p.add_argument("--codex-fallback-url", metavar="URL")
     add_p.add_argument("--codex-token", metavar="TOKEN", help="$ENV_VAR or literal")
+    add_p.add_argument("--codex-auth-mode", choices=[CODEX_AUTH_MODE_CHATGPT])
     add_p.add_argument("--gemini-key", metavar="KEY", help="$ENV_VAR or literal")
     add_p.add_argument("--gemini-auth-type", metavar="TYPE", default=None)
     add_p.add_argument("--opencode-url", metavar="URL")
@@ -6988,6 +7548,28 @@ def build_parser() -> argparse.ArgumentParser:
     settings_set = settings_sub.add_parser("set", help="Update one setting")
     settings_set.add_argument("key")
     settings_set.add_argument("value", nargs="?")
+
+    sync_p = sub.add_parser("sync", help="Toggle future Codex ChatGPT session sharing mode")
+    sync_p.add_argument("action", choices=["on", "off", "status"])
+
+    share_p = sub.add_parser("share", help="Prepare or inspect Codex share lane recipes")
+    share_tool_sub = share_p.add_subparsers(dest="share_tool", metavar="<share-tool>")
+    share_codex = share_tool_sub.add_parser("codex", help="Manage prepared Codex share lanes")
+    share_codex_sub = share_codex.add_subparsers(dest="share_command", metavar="<share-command>")
+    share_prepare = share_codex_sub.add_parser("prepare", help="Prepare a Codex share recipe")
+    share_prepare.add_argument("lane")
+    share_prepare.add_argument("provider", help="Target provider name or alias")
+    share_prepare.add_argument(
+        "--from",
+        dest="source",
+        default=CODEX_SHARE_DEFAULT_SOURCE,
+        metavar="SOURCE",
+        help=f"Source thread id or '{CODEX_SHARE_DEFAULT_SOURCE}' (default: %(default)s)",
+    )
+    share_status = share_codex_sub.add_parser("status", help="Show prepared Codex share lanes")
+    share_status.add_argument("lane", nargs="?")
+    share_clear = share_codex_sub.add_parser("clear", help="Delete one prepared Codex share lane")
+    share_clear.add_argument("lane")
 
     doctor_p = sub.add_parser("doctor", help="Validate configuration and probe health")
     doctor_p.add_argument("tool", nargs="?", default="all", choices=(*ALL_TOOLS, "all"))
@@ -7080,6 +7662,21 @@ def main() -> None:
             cmd_settings_get(store, args.key)
         elif args.settings_command == "set":
             cmd_settings_set(store, args.key, args.value)
+        else:
+            parser.print_help(sys.stderr)
+            sys.exit(1)
+    elif args.command == "sync":
+        cmd_sync(store, args.action)
+    elif args.command == "share":
+        if args.share_tool != CODEX_SHARE_TOOL:
+            parser.print_help(sys.stderr)
+            sys.exit(1)
+        if args.share_command == "prepare":
+            cmd_share_prepare(store, args.lane, args.provider, args.source)
+        elif args.share_command == "status":
+            cmd_share_status(store, args.lane)
+        elif args.share_command == "clear":
+            cmd_share_clear(store, args.lane)
         else:
             parser.print_help(sys.stderr)
             sys.exit(1)

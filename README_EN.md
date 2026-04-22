@@ -156,6 +156,42 @@ ccsw alias vx vertex
 ccsw alias aws aws
 ```
 
+If you also want one Codex-only provider that switches back to the official ChatGPT login, add a dedicated provider for it:
+
+```bash
+ccsw add pro --codex-auth-mode chatgpt
+cxsw pro
+```
+
+This mode does not write a custom `base_url`, and it removes `OPENAI_API_KEY` / `OPENAI_BASE_URL` overrides that would otherwise fight with the official login state. Instead, it switches Codex back to the built-in `openai` provider.
+
+As long as you have already signed in through Codex, you can switch back to it repeatedly. The implementation only checks `auth_mode=chatgpt` and does not depend on any specific `chatgpt_plan_type` string, so values such as `prolite`, a future `pro`, or other ChatGPT subscription-backed login states can all be restored through the same provider.
+
+By default, `cxsw pro` stays on that native `openai` lane. It does not share a provider id with relay-backed Codex providers, and it does not rewrite old sessions.
+
+If you only want **future official Codex sessions** to enter a shared lane, turn on the future-only sync toggle explicitly:
+
+```bash
+cxsw sync on
+cxsw pro
+cxsw sync status
+cxsw sync off
+```
+
+- `sync on` only changes what happens the **next time** you run `cxsw pro`
+- existing `openai` / `ccswitch_active` sessions are left alone
+- after `sync off`, running `cxsw pro` again returns to the built-in `openai` lane
+
+If you would rather keep the default isolation and only prepare a shareable follow-up session when needed, use a share recipe:
+
+```bash
+cxsw share prepare work pro --from last
+cxsw share status work
+cxsw share clear work
+```
+
+`share prepare` only stores the next-step commands, such as `cxsw pro` and `codex fork ...`. It does not switch providers, fork a thread, or enter a session automatically.
+
 ### Alias (Short Name) Habit
 
 If you plan to use `ccswitch` regularly, it is easier to use aliases (short names) in day-to-day commands instead of saving them for the occasional shortcut.
@@ -207,6 +243,12 @@ ccsw show
 ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
+
+# Codex sharing controls (off by default)
+cxsw sync on|off|status
+cxsw share prepare <lane> <provider> --from last
+cxsw share status [lane]
+cxsw share clear <lane>
 
 # Reusable queues
 ccsw profile add work --codex op,vx --opencode op
@@ -289,6 +331,7 @@ ccsw run codex work -- codex exec "hello"
 
 ```bash
 ccsw import current claude rescued-claude
+ccsw import current codex pro
 ccsw rollback codex
 ccsw repair all
 ```
@@ -327,6 +370,10 @@ wire_api = "responses"
 ```
 
 This matters for OpenAI-compatible relays that support HTTP Responses but not the Responses WebSocket transport.
+
+If a Codex provider uses `--codex-auth-mode chatgpt`, `ccswitch` does not write the custom block above. It switches `model_provider` back to the built-in `openai` provider instead, and clears `openai_base_url` plus the `OPENAI_API_KEY` override so the official ChatGPT login state can take over cleanly.
+
+If you explicitly run `cxsw sync on`, the next `cxsw pro` will instead route that ChatGPT login through the shared `ccswitch_active` provider id. This is a future-session toggle only; it does not migrate older sessions.
 
 </details>
 
