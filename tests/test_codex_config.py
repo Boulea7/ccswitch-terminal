@@ -973,6 +973,14 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 text=True,
                 check=True,
             )
+            subprocess.run(
+                ["python3", "ccsw.py", "capture", "codex", "pro"],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
 
             proc = subprocess.run(
                 ["python3", "ccsw.py", "codex", "pro"],
@@ -1003,6 +1011,127 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             )
             self.assertIn("unset OPENAI_API_KEY", proc.stdout)
             self.assertIn("unset OPENAI_BASE_URL", proc.stdout)
+
+    def test_write_codex_chatgpt_mode_restores_target_snapshot_and_refreshes_active_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            snapshot_dir = root / "codex-chatgpt"
+            snapshot_dir.mkdir(parents=True)
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+                        "OPENAI_API_KEY": "stale-provider-token",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path.write_text('model = "gpt-5.4"\nmodel_provider = "openai"\n', encoding="utf-8")
+            (snapshot_dir / "pro1.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "live-pro1", "account_id": "acct-pro1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}},
+                    "pro1": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro1"}},
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "CODEX_AUTH", auth_path
+            ), patch.object(ccsw, "CODEX_CONFIG", config_path), patch.object(
+                ccsw, "CODEX_ENV_PATH", env_path
+            ):
+                ccsw.write_codex(store["providers"]["pro1"]["codex"], "pro1", store)
+
+            auth = json.loads(auth_path.read_text(encoding="utf-8"))
+            config = config_path.read_text(encoding="utf-8")
+            codex_env = env_path.read_text(encoding="utf-8")
+            refreshed = json.loads((snapshot_dir / "pro.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                auth,
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "live-pro1", "account_id": "acct-pro1"},
+                },
+            )
+            self.assertEqual(
+                refreshed,
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+                },
+            )
+            self.assertIn('model_provider = "openai"\n', config)
+            self.assertEqual(
+                codex_env,
+                "unset OPENAI_API_KEY\nunset OPENAI_BASE_URL\n",
+            )
+
+    def test_write_codex_chatgpt_mode_requires_snapshot_for_other_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path.write_text('model = "gpt-5.4"\nmodel_provider = "openai"\n', encoding="utf-8")
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}},
+                    "pro1": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro1"}},
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "CODEX_AUTH", auth_path
+            ), patch.object(ccsw, "CODEX_CONFIG", config_path), patch.object(
+                ccsw, "CODEX_ENV_PATH", env_path
+            ):
+                result = ccsw.write_codex(store["providers"]["pro1"]["codex"], "pro1", store)
+
+            self.assertIsNone(result)
+            self.assertEqual(
+                json.loads(auth_path.read_text(encoding="utf-8")),
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+                },
+            )
+            self.assertFalse((root / ".ccswitch" / "codex.env").exists())
 
 if __name__ == "__main__":
     unittest.main()

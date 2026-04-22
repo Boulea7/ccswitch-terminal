@@ -8,6 +8,15 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ## Unreleased
 
+### Added
+
+- Added official multi-account Codex ChatGPT snapshot flows: `ccsw capture codex <provider>` to save the current official login, and `ccsw login codex <provider>` / `cxsw login <provider>` to run the official logout-login flow and capture the new account under names such as `pro`, `pro1`, and `pro2`.
+
+### Changed
+
+- Changed ChatGPT-backed Codex switching to restore provider-specific local snapshots before writing `~/.codex/auth.json`, while also refreshing the current provider snapshot before switching away so rotating refresh tokens are less likely to go stale.
+- Changed the public README set to document the new official multi-account workflow, including the local-only snapshot boundary and the new `cxsw capture` / `cxsw login` commands.
+
 ## v0.1.1 - 2026-04-18
 
 ### Changed
