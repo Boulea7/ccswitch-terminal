@@ -3103,20 +3103,29 @@ def _codex_state_db_path() -> Optional[Path]:
     preferred = codex_dir / "state_5.sqlite"
     if preferred.exists():
         return preferred
-    candidates = sorted(
-        (path for path in codex_dir.glob("state_*.sqlite") if path.is_file()),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+    try:
+        candidates = sorted(
+            (path for path in codex_dir.glob("state_*.sqlite") if path.is_file()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return None
     return candidates[0] if candidates else None
 
 
 def _open_codex_state_db() -> Optional[sqlite3.Connection]:
     """Open the Codex thread state DB in read-only mode when present."""
-    db_path = _codex_state_db_path()
+    try:
+        db_path = _codex_state_db_path()
+    except OSError:
+        return None
     if not db_path:
         return None
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except (OSError, sqlite3.Error):
+        return None
     conn.row_factory = sqlite3.Row
     return conn
 
