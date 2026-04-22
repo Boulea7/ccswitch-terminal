@@ -196,6 +196,11 @@ ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
 
+cxsw sync on|off|status
+cxsw share prepare <lane> <provider> --from last
+cxsw share status [lane]
+cxsw share clear <lane>
+
 ccsw profile add work --codex op,vx --opencode op
 ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
@@ -264,6 +269,10 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>Nota sobre Codex 0.116+</b></summary>
 
 `ccswitch` escreve um `model_provider` explícito para o Codex e usa `supports_websockets = false` quando necessário.
+
+`cxsw pro` continua usando a lane integrada `openai` por padrão. Só depois de ativar `cxsw sync on` e executar `cxsw pro` novamente é que as sessões oficiais futuras entram na lane compartilhada. Sessões antigas não são migradas.
+
+`cxsw share prepare ...` não troca o provider nem faz `fork` de sessão automaticamente. Ele só salva a receita com os próximos comandos sugeridos, como `cxsw ...` e `codex fork ...`.
 
 </details>
 
