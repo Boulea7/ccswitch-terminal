@@ -5762,7 +5762,7 @@ def _clear_absent_import_fields(
 ) -> None:
     """Drop optional metadata that is no longer present in the live config."""
     optional_fields: Dict[str, tuple[str, ...]] = {
-        "codex": ("auth_mode",),
+        "codex": ("auth_mode", "provider_route"),
         "gemini": ("auth_type",),
         "opencode": ("headers", "npm", "model"),
         "openclaw": ("api", "profile", "model"),
@@ -5771,7 +5771,7 @@ def _clear_absent_import_fields(
         if field not in imported_conf:
             merged_conf.pop(field, None)
     if tool == "codex" and imported_conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
-        for field in ("token", "base_url", "fallback_base_url"):
+        for field in ("token", "base_url", "fallback_base_url", "provider_route"):
             merged_conf.pop(field, None)
 
 
