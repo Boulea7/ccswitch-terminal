@@ -1717,6 +1717,21 @@ def _codex_chatgpt_provider_route(store: Optional[Dict[str, Any]]) -> str:
     return CODEX_BUILTIN_PROVIDER_ID
 
 
+def _codex_has_chatgpt_login_state(auth_data: Dict[str, Any]) -> bool:
+    """Return True when auth.json still contains a usable ChatGPT login payload."""
+    if auth_data.get("auth_mode") != CODEX_AUTH_MODE_CHATGPT:
+        return False
+    if resolve_token(auth_data.get("chatgpt_access_token")):
+        return True
+    tokens = auth_data.get("tokens")
+    if isinstance(tokens, dict) and resolve_token(tokens.get("access_token")):
+        return True
+    session = auth_data.get("chatgpt_session")
+    if isinstance(session, dict) and resolve_token(session.get("access_token")):
+        return True
+    return False
+
+
 def upsert_root_toml_value(path: Path, key: str, literal: str) -> None:
     """Set a root-level TOML value while preserving the rest of the file."""
     new_line = f"{key} = {literal}"
@@ -4233,6 +4248,12 @@ def write_codex(
         config_path = paths["config"]
 
         data = load_json(auth_path)
+        if not _codex_has_chatgpt_login_state(data):
+            info(
+                "[codex] Skipped: ChatGPT login is missing or incomplete in auth.json. "
+                "Run `codex login` first, then try `cxsw pro` again."
+            )
+            return None
         auth_bak = backup_file(auth_path, enabled=create_backup)
         config_bak = backup_file(config_path, enabled=create_backup)
 
@@ -5621,7 +5642,17 @@ def cmd_share_prepare(store: Dict[str, Any], lane: str, provider_name: str, sour
 
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
+        canonical = resolve_alias(store, provider_name)
+        providers = store.get("providers", {})
+        provider = providers.get(canonical)
+        conf = provider.get(CODEX_SHARE_TOOL) if isinstance(provider, dict) else None
+        if not isinstance(conf, dict):
+            info(f"[error] Provider '{provider_name}' has no codex config.")
+            sys.exit(1)
         lanes = _get_codex_share_lanes(store)
+        recipe["provider"] = canonical
+        recipe["target_model_provider"] = _codex_target_model_provider_id(store, conf)
+        recipe["commands"] = _codex_share_recipe_commands(recipe_cwd, canonical, source_thread["id"])
         lanes[lane] = recipe
         _set_codex_share_lanes(store, lanes)
         save_store(store, expected_revision=store.get("_revision"))

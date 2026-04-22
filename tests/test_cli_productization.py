@@ -210,6 +210,39 @@ class ProductizationStoreTests(unittest.TestCase):
             self.assertEqual(json.loads(auth_path.read_text(encoding="utf-8")), {"auth_mode": "chatgpt"})
             self.assertEqual(config_path.read_text(encoding="utf-8"), 'model_provider = "openai"\n')
 
+    def test_cmd_share_prepare_rechecks_provider_inside_state_lock(self) -> None:
+        store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {"p": "pro"},
+            "providers": {"pro": {"codex": {"auth_mode": "chatgpt"}}},
+            "profiles": {},
+            "settings": {},
+        }
+        locked_store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {},
+            "providers": {},
+            "profiles": {},
+            "settings": {},
+            "_revision": 1,
+        }
+
+        with patch("ccsw._get_latest_codex_thread_for_cwd", return_value={
+            "id": "thr-test-1",
+            "title": "Seed thread",
+            "cwd": "/tmp/work",
+            "model_provider": "openai",
+            "updated_at": 2,
+        }), patch("ccsw.os.getcwd", return_value="/tmp/work"), patch(
+            "ccsw._load_fresh_store_from_lock", return_value=locked_store
+        ), patch("ccsw.save_store") as save_store:
+            with self.assertRaises(SystemExit):
+                ccsw.cmd_share_prepare(store, "work", "p", "last")
+
+        save_store.assert_not_called()
+
 
 class RuntimeIsolationTests(unittest.TestCase):
     def test_runtime_paths_follow_env_overrides_after_import(self) -> None:

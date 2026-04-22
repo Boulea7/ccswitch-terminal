@@ -834,6 +834,29 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 "unset OPENAI_API_KEY\nunset OPENAI_BASE_URL\n",
             )
 
+    def test_write_codex_chatgpt_mode_requires_existing_login_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            auth_path.write_text(json.dumps({}), encoding="utf-8")
+            config_path.write_text('model_provider = "openai"\n', encoding="utf-8")
+
+            conf = {"auth_mode": "chatgpt"}
+
+            with patch.object(ccsw, "CODEX_AUTH", auth_path), patch.object(
+                ccsw, "CODEX_CONFIG", config_path
+            ), patch.object(ccsw, "CODEX_ENV_PATH", env_path):
+                result = ccsw.write_codex(conf, "pro")
+
+            self.assertIsNone(result)
+            self.assertEqual(json.loads(auth_path.read_text(encoding="utf-8")), {})
+            self.assertEqual(config_path.read_text(encoding="utf-8"), 'model_provider = "openai"\n')
+            self.assertFalse(env_path.exists())
+
     def test_codex_switch_writes_custom_provider_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
