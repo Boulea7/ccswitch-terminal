@@ -2222,6 +2222,46 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 },
             )
 
+    def test_import_current_codex_alias_persists_to_canonical_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "demo", "account_id": "acct-pro"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text('model_provider = "openai"\n', encoding="utf-8")
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {"p": "pro"},
+                "providers": {"pro": {"codex": {"auth_mode": "chatgpt"}}},
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root / ".ccswitch"), patch.object(
+                ccsw, "DB_PATH", root / ".ccswitch" / "ccswitch.db"
+            ), patch.object(ccsw, "PROVIDERS_PATH", root / ".ccswitch" / "providers.json"), patch(
+                "ccsw.save_store"
+            ):
+                ccsw.cmd_import_current(store, "codex", "p")
+
+            self.assertNotIn("p", store["providers"])
+            self.assertEqual(
+                store["providers"]["pro"]["codex"],
+                {"auth_mode": "chatgpt", "account_id": "acct-pro"},
+            )
+            self.assertTrue((root / ".ccswitch" / "codex-chatgpt" / "pro.json").exists())
+
     def test_cmd_login_codex_captures_active_provider_before_new_login(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

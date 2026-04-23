@@ -6177,7 +6177,8 @@ def cmd_import_current(
     """Import the current live configuration into a saved provider."""
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
-        provider = store.setdefault("providers", {}).get(name, {})
+        canonical = resolve_alias(store, name)
+        provider = store.setdefault("providers", {}).get(canonical, {})
         existing_conf = provider.get(tool) if isinstance(provider.get(tool), dict) else {}
         if tool == "claude":
             conf = _read_current_claude(store)
@@ -6200,7 +6201,7 @@ def cmd_import_current(
                 _reject_literal_secret("imported gemini api_key")
             conf["api_key"] = preserved
         elif tool == "codex" and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
-            conf = _update_codex_chatgpt_provider(store, name, load_json(get_tool_paths(store, "codex")["auth"]))
+            conf = _update_codex_chatgpt_provider(store, canonical, load_json(get_tool_paths(store, "codex")["auth"]))
         else:
             preserved = _preserve_secret_ref(existing_conf.get("token"), conf.get("token"))
             if not allow_literal_secrets and not _is_env_ref(preserved):
@@ -6210,9 +6211,20 @@ def cmd_import_current(
         merged_conf.update(conf)
         _clear_absent_import_fields(tool, merged_conf, conf)
         provider[tool] = merged_conf
-        store["providers"][name] = provider
+        store["providers"][canonical] = provider
         save_store(store, expected_revision=store.get("_revision"))
-    info(f"Imported current {tool} config into provider '{name}'.")
+    info(f"Imported current {tool} config into provider '{canonical}'.")
+
+
+def _capture_codex_locked(store: Dict[str, Any], name: str) -> str:
+    """Capture the current Codex ChatGPT login into one provider while holding the state lock."""
+    canonical = resolve_alias(store, name)
+    auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+    conf = _update_codex_chatgpt_provider(store, canonical, auth_data)
+    provider = store.setdefault("providers", {}).setdefault(canonical, {})
+    provider["codex"] = conf
+    save_store(store, expected_revision=store.get("_revision"))
+    return canonical
 
 
 def cmd_capture(store: Dict[str, Any], tool: str, name: str) -> None:
@@ -6222,12 +6234,7 @@ def cmd_capture(store: Dict[str, Any], tool: str, name: str) -> None:
         sys.exit(1)
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
-        canonical = resolve_alias(store, name)
-        auth_data = load_json(get_tool_paths(store, "codex")["auth"])
-        conf = _update_codex_chatgpt_provider(store, canonical, auth_data)
-        provider = store.setdefault("providers", {}).setdefault(canonical, {})
-        provider["codex"] = conf
-        save_store(store, expected_revision=store.get("_revision"))
+        canonical = _capture_codex_locked(store, name)
     info(f"Captured current codex ChatGPT login into provider '{canonical}'.")
 
 
@@ -6253,14 +6260,15 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
                 active_provider["codex"] = conf
                 store.setdefault("providers", {})[active_provider_name] = active_provider
                 save_store(store, expected_revision=store.get("_revision"))
-    with _codex_cli_home(store) as env:
-        logout = subprocess.run([codex_executable, "logout"], env=env)
-        if logout.returncode != 0:
-            sys.exit(logout.returncode or 1)
-        login = subprocess.run([codex_executable, "login"], env=env)
-        if login.returncode != 0:
-            sys.exit(login.returncode or 1)
-    cmd_capture(store, tool, canonical)
+        with _codex_cli_home(store) as env:
+            logout = subprocess.run([codex_executable, "logout"], env=env)
+            if logout.returncode != 0:
+                sys.exit(logout.returncode or 1)
+            login = subprocess.run([codex_executable, "login"], env=env)
+            if login.returncode != 0:
+                sys.exit(login.returncode or 1)
+        canonical = _capture_codex_locked(store, canonical)
+    info(f"Captured current codex ChatGPT login into provider '{canonical}'.")
 
 
 def _history_summary(entry: Dict[str, Any]) -> str:
@@ -6922,6 +6930,7 @@ def _probe_codex_target(
         config_content = paths["config"].read_text(encoding="utf-8") if paths["config"].exists() else ""
         current_provider = _read_toml_string_value(config_content, "model_provider")
         root_openai_base_url = _read_toml_string_value(config_content, "openai_base_url")
+        live_account_id = _codex_chatgpt_account_id(auth_data)
         provider_block = (
             _extract_toml_table_body(config_content, f"model_providers.{current_provider}")
             if current_provider
@@ -6931,7 +6940,7 @@ def _probe_codex_target(
             "auth_exists": paths["auth"].exists(),
             "auth_mode": auth_data.get("auth_mode"),
             "auth_has_openai_api_key": bool(auth_data.get("OPENAI_API_KEY")),
-            "auth_account_id": _codex_chatgpt_account_id(auth_data),
+            "auth_account_hint": _codex_chatgpt_account_hint(live_account_id),
             "config_exists": paths["config"].exists(),
             "model_provider": current_provider,
             "openai_base_url": root_openai_base_url,
@@ -6964,7 +6973,7 @@ def _probe_codex_target(
             mismatch_fields.append("auth_has_openai_api_key")
         if managed_target and not config_checks["snapshot_exists"]:
             mismatch_fields.append("snapshot")
-        if conf.get("account_id") and config_checks["auth_account_id"] and conf.get("account_id") != config_checks["auth_account_id"]:
+        if conf.get("account_id") and live_account_id and conf.get("account_id") != live_account_id:
             mismatch_fields.append("account_id")
         config_status = "ok" if not mismatch_fields else "degraded"
         checks = {
