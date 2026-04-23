@@ -6265,9 +6265,13 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
                 store.setdefault("providers", {})[active_provider_name] = active_provider
                 save_store(store, expected_revision=store.get("_revision"))
         with _codex_cli_home(store) as env:
+            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+            # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
             logout = subprocess.run([str(codex_path), "logout"], env=env)
             if logout.returncode != 0:
                 sys.exit(logout.returncode or 1)
+            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+            # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
             login = subprocess.run([str(codex_path), "login"], env=env)
             if login.returncode != 0:
                 sys.exit(login.returncode or 1)
