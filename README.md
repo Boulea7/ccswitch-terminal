@@ -167,6 +167,19 @@ cxsw pro
 
 只要你已经先在 Codex 里完成官方登录，这个 provider 就可以反复切回去。实现上只认 `auth_mode=chatgpt`，不依赖 `chatgpt_plan_type` 的具体字符串，所以像 `prolite`、后续可能出现的 `pro`，以及其他 ChatGPT 订阅登录态都能正常切换。
 
+如果你要在**同一台机器**上保留多个官方账号，建议把当前账号先记成 `pro`，后续账号按 `pro1`、`pro2` 往后排：
+
+```bash
+ccsw capture codex pro
+ccsw login codex pro1
+cxsw pro
+cxsw pro1
+```
+
+`capture` 会把当前官方登录态保存成该 provider 的本地快照；`login` 会先跑官方 `codex logout` / `codex login`，再自动保存快照。切走当前官方账号前，`ccswitch` 也会先刷新它自己的快照，尽量跟上 refresh token 的轮换。
+
+这套快照只适合这台机器上的顺序切换，不适合手动复制 `~/.codex/auth.json` 去做跨机器共享。`ccsw import current codex <provider>` 仍然可用；如果当前 live Codex 已经在官方 ChatGPT lane 上，它也能导入同类 provider。若本地还残留旧的 relay 覆盖，优先用 `ccsw capture codex ...` 会更直接。
+
 默认情况下，`cxsw pro` 仍然会走这条原生 `openai` 路径，不会和中转站共享 provider id，也不会改动旧 session。
 
 如果你只想让**后续新开的官方 Codex 会话**进入共享 lane，可以显式打开 future-only 开关：
@@ -243,6 +256,10 @@ ccsw show
 ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
+
+# Codex 官方账号快照
+cxsw capture <provider>
+cxsw login <provider>
 
 # Codex 共享控制（默认关闭）
 cxsw sync on|off|status
@@ -372,6 +389,8 @@ wire_api = "responses"
 这对“支持 HTTP Responses、但不支持 Responses WebSocket”的 OpenAI 兼容中转尤其重要。
 
 如果 Codex provider 使用的是 `--codex-auth-mode chatgpt`，`ccswitch` 不会写上面的自定义 block，而是直接把 `model_provider` 切回内置 `openai`，同时清掉 `openai_base_url` 和 `OPENAI_API_KEY` 覆盖项，避免和官方 ChatGPT 登录态互相覆盖。
+
+多官方账号切换依赖 `ccswitch` 自己保存的本地私有快照，而不是建议你静态复制 `auth.json`。这样在切走当前账号前，可以先把最新登录态刷新回它自己的 provider，减少 refresh token 轮换带来的失效概率。
 
 如果你显式执行 `cxsw sync on`，后续再运行 `cxsw pro` 时，`ccswitch` 才会把 ChatGPT 登录态写到共享 lane 的 `ccswitch_active` provider id。这个开关只影响 future sessions，不会迁移旧会话。
 

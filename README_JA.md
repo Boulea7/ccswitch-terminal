@@ -196,6 +196,9 @@ ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
 
+cxsw capture <provider>
+cxsw login <provider>
+
 cxsw sync on|off|status
 cxsw share prepare <lane> <provider> --from last
 cxsw share status [lane]
@@ -269,6 +272,8 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 <summary><b>Codex 0.116+ メモ</b></summary>
 
 Codex では `model_provider` を明示的に書き、必要に応じて `supports_websockets = false` を設定します。
+
+同じマシンで複数の公式アカウントを使う場合は、現在のものを `cxsw capture pro` で保存し、次のものを `cxsw login pro1` で登録します。snapshot はローカル私有用途で、同じマシン上の順次切り替えだけを想定しています。`auth.json` を手で別マシンへコピーする運用は推奨しません。
 
 `cxsw pro` はデフォルトでは内蔵 `openai` lane のままです。`cxsw sync on` を明示的に有効にしたあとで再度 `cxsw pro` を実行した場合だけ、将来の公式 ChatGPT セッションを共有 lane に寄せます。既存セッションは移行しません。
 

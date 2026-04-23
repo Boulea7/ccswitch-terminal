@@ -155,6 +155,7 @@ CODEX_SHARE_SETTING_KEY = "codex_share_lanes"
 CODEX_SYNC_SETTING_KEY = "codex_sync_future_sessions"
 CODEX_SHARE_DEFAULT_SOURCE = "last"
 CODEX_SHARE_TOOL = "codex"
+CODEX_CHATGPT_SNAPSHOT_DIRNAME = "codex-chatgpt"
 _BOOL_TRUE_LITERALS = {"1", "on", "true", "yes"}
 _BOOL_FALSE_LITERALS = {"0", "off", "false", "no"}
 RETRYABLE_PATTERNS = (
@@ -1731,6 +1732,209 @@ def _codex_has_chatgpt_login_state(auth_data: Dict[str, Any]) -> bool:
     if isinstance(session, dict) and resolve_token(session.get("access_token")):
         return True
     return False
+
+
+def _codex_chatgpt_snapshot_dir() -> Path:
+    """Return the directory holding saved Codex ChatGPT auth snapshots."""
+    return _runtime_ccswitch_dir() / CODEX_CHATGPT_SNAPSHOT_DIRNAME
+
+
+def _codex_chatgpt_snapshot_path(provider_name: str) -> Path:
+    """Return the snapshot path for one Codex ChatGPT provider."""
+    if not _NAME_RE.match(provider_name):
+        info(f"[error] Invalid Codex ChatGPT snapshot provider name: {provider_name!r}")
+        sys.exit(1)
+    return _codex_chatgpt_snapshot_dir() / f"{provider_name}.json"
+
+
+def _codex_chatgpt_account_id(auth_data: Dict[str, Any]) -> Optional[str]:
+    """Extract the stable ChatGPT account id when Codex exposes one."""
+    tokens = auth_data.get("tokens")
+    account_id = tokens.get("account_id") if isinstance(tokens, dict) else None
+    if isinstance(account_id, str) and account_id.strip():
+        return account_id.strip()
+    return None
+
+
+def _codex_chatgpt_account_hint(account_id: Optional[str]) -> Optional[str]:
+    """Return a short display-safe account hint."""
+    if not isinstance(account_id, str) or not account_id:
+        return None
+    return account_id[:8]
+
+
+def _normalize_codex_chatgpt_auth(auth_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Drop provider overrides from a live ChatGPT auth payload."""
+    if not _codex_has_chatgpt_login_state(auth_data):
+        return None
+    normalized = dict(auth_data)
+    normalized.pop("OPENAI_API_KEY", None)
+    normalized.pop("OPENAI_BASE_URL", None)
+    normalized["auth_mode"] = CODEX_AUTH_MODE_CHATGPT
+    return normalized
+
+
+def _codex_chatgpt_snapshot_exists(provider_name: str) -> bool:
+    """Return True when one provider already has a saved ChatGPT snapshot."""
+    return _codex_chatgpt_snapshot_path(provider_name).exists()
+
+
+def _codex_chatgpt_conf_matches_account(conf: Optional[Dict[str, Any]], account_id: Optional[str]) -> bool:
+    """Return True when stored provider metadata does not contradict the live account."""
+    if not isinstance(conf, dict):
+        return True
+    expected = conf.get("account_id")
+    if not isinstance(expected, str) or not expected or not account_id:
+        return True
+    return expected == account_id
+
+
+def _save_codex_chatgpt_snapshot(provider_name: str, auth_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist one normalized ChatGPT auth snapshot and return provider metadata."""
+    normalized = _normalize_codex_chatgpt_auth(auth_data)
+    if not normalized:
+        info(
+            "[error] Codex ChatGPT login is missing or incomplete. "
+            "Run `codex login` first, then capture or switch again."
+        )
+        sys.exit(1)
+    save_json(_codex_chatgpt_snapshot_path(provider_name), normalized)
+    metadata: Dict[str, Any] = {"auth_mode": CODEX_AUTH_MODE_CHATGPT}
+    account_id = _codex_chatgpt_account_id(normalized)
+    if account_id:
+        metadata["account_id"] = account_id
+    return metadata
+
+
+def _load_codex_chatgpt_snapshot(provider_name: str) -> Optional[Dict[str, Any]]:
+    """Load one saved ChatGPT auth snapshot when it exists and is still usable."""
+    path = _codex_chatgpt_snapshot_path(provider_name)
+    if not path.exists():
+        return None
+    snapshot = load_json(path)
+    return _normalize_codex_chatgpt_auth(snapshot)
+
+
+def _delete_codex_chatgpt_snapshot(provider_name: str) -> bool:
+    """Delete one saved Codex ChatGPT snapshot if it exists."""
+    path = _codex_chatgpt_snapshot_path(provider_name)
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _codex_chatgpt_provider_error(provider_name: str, reason: str) -> str:
+    """Render a consistent error message for ChatGPT-backed provider issues."""
+    return (
+        f"[error] Provider '{provider_name}' {reason}. "
+        f"Run `ccsw capture codex {provider_name}` or `ccsw login codex {provider_name}` first."
+    )
+
+
+def _preflight_codex_chatgpt_provider_target(store: Dict[str, Any], name: str) -> str:
+    """Validate one target provider name before running ChatGPT-specific flows."""
+    canonical = resolve_alias(store, name)
+    _codex_chatgpt_snapshot_path(canonical)
+    provider = store.get("providers", {}).get(canonical)
+    conf = provider.get("codex") if isinstance(provider, dict) else None
+    if isinstance(conf, dict) and not _codex_uses_chatgpt_auth(conf):
+        info(f"[error] Provider '{canonical}' already has a non-ChatGPT codex config.")
+        sys.exit(1)
+    return canonical
+
+
+def _update_codex_chatgpt_provider(store: Dict[str, Any], provider_name: str, auth_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Capture the current ChatGPT login into one provider and update store metadata."""
+    providers = store.setdefault("providers", {})
+    provider = providers.get(provider_name, {})
+    existing_conf = provider.get("codex") if isinstance(provider.get("codex"), dict) else {}
+    if existing_conf and not _codex_uses_chatgpt_auth(existing_conf):
+        info(f"[error] Provider '{provider_name}' already has a non-ChatGPT codex config.")
+        sys.exit(1)
+    account_id = _codex_chatgpt_account_id(auth_data)
+    if not _codex_chatgpt_conf_matches_account(existing_conf, account_id):
+        hint = _codex_chatgpt_account_hint(account_id)
+        expected_hint = _codex_chatgpt_account_hint(existing_conf.get("account_id"))
+        info(
+            f"[error] Provider '{provider_name}' points to a different ChatGPT account "
+            f"(expected {expected_hint}, found {hint})."
+        )
+        sys.exit(1)
+    updated_conf = dict(existing_conf)
+    updated_conf.update(_save_codex_chatgpt_snapshot(provider_name, auth_data))
+    for field in ("token", "base_url", "fallback_base_url", "provider_route"):
+        updated_conf.pop(field, None)
+    provider["codex"] = updated_conf
+    providers[provider_name] = provider
+    return updated_conf
+
+
+def _refresh_active_codex_chatgpt_snapshot(store: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Refresh the active Codex ChatGPT snapshot from live auth when possible."""
+    if not isinstance(store, dict):
+        return None
+    active_provider_name = store.get("active", {}).get("codex")
+    active_provider = store.get("providers", {}).get(active_provider_name) if active_provider_name else None
+    active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
+    if not _codex_uses_chatgpt_auth(active_conf):
+        return None
+    auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+    if not _codex_has_chatgpt_login_state(auth_data):
+        return active_provider_name
+    live_account_id = _codex_chatgpt_account_id(auth_data)
+    if not _codex_chatgpt_conf_matches_account(active_conf, live_account_id):
+        info(
+            f"[codex] Skipped: active provider '{active_provider_name}' no longer matches the live ChatGPT account. "
+            f"Run `ccsw capture codex {active_provider_name}` or `ccsw login codex {active_provider_name}` first."
+        )
+        sys.exit(1)
+    updated_active_conf = _update_codex_chatgpt_provider(store, active_provider_name, auth_data)
+    if isinstance(active_provider, dict):
+        active_provider["codex"] = updated_active_conf
+        store.setdefault("providers", {})[active_provider_name] = active_provider
+    return active_provider_name
+
+
+@contextlib.contextmanager
+def _codex_cli_home(store: Dict[str, Any]):
+    """Run official Codex login commands against the effective codex config dir."""
+    target_dir = get_tool_paths(store, "codex")["dir"]
+    _ensure_private_dir(target_dir)
+    _ensure_private_dir(_tmp_dir())
+    temp_home = Path(tempfile.mkdtemp(dir=_tmp_dir(), prefix="codex-home-"))
+    temp_codex_dir = temp_home / ".codex"
+    copy_back = False
+    try:
+        try:
+            os.symlink(target_dir, temp_codex_dir, target_is_directory=True)
+        except (AttributeError, NotImplementedError, OSError):
+            copy_back = True
+            if target_dir.exists():
+                shutil.copytree(target_dir, temp_codex_dir, dirs_exist_ok=True)
+            else:
+                _ensure_private_dir(temp_codex_dir)
+        env = os.environ.copy()
+        env["HOME"] = str(temp_home)
+        env.pop("CCSW_FAKE_HOME", None)
+        yield env
+        if copy_back:
+            _ensure_private_dir(target_dir)
+            for child in target_dir.iterdir() if target_dir.exists() else []:
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            if temp_codex_dir.exists():
+                for child in temp_codex_dir.iterdir():
+                    destination = target_dir / child.name
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.copytree(child, destination, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(child, destination)
+    finally:
+        shutil.rmtree(temp_home, ignore_errors=True)
 
 
 def upsert_root_toml_value(path: Path, key: str, literal: str) -> None:
@@ -3313,6 +3517,15 @@ def _preflight_tool_activation(
         info(f"[error] Provider '{provider_name}' has no {tool} config.")
         sys.exit(1)
     if tool == "codex" and _codex_uses_chatgpt_auth(conf):
+        if _codex_chatgpt_snapshot_exists(provider_name):
+            return
+        active_provider = store.get("active", {}).get("codex")
+        if active_provider == provider_name:
+            auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+            if _codex_has_chatgpt_login_state(auth_data):
+                return
+        info(_codex_chatgpt_provider_error(provider_name, "has no saved Codex ChatGPT snapshot"))
+        sys.exit(1)
         return
     secret_value = conf.get("api_key") if tool == "gemini" else (conf.get("token") or conf.get("api_key"))
     if not resolve_token(secret_value):
@@ -3854,6 +4067,10 @@ def cmd_show(store: Dict[str, Any]) -> None:
             if tool == "codex" and conf and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
                 details.append("auth=chatgpt")
                 details.append(f"route={_codex_chatgpt_provider_route(store)}")
+                details.append(f"snapshot={'ready' if _codex_chatgpt_snapshot_exists(name) else 'missing'}")
+                account_hint = _codex_chatgpt_account_hint(conf.get("account_id"))
+                if account_hint:
+                    details.append(f"account={account_hint}")
             if base_url:
                 details.append(f"url={base_url}")
             if fallback_base_url:
@@ -3879,6 +4096,7 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
     if canonical in BUILTIN_PROVIDERS:
         info(f"[error] Built-in provider '{canonical}' cannot be removed.")
         sys.exit(1)
+    deleted_snapshot = False
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
         canonical = resolve_alias(store, name)
@@ -3894,6 +4112,7 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
         stale = [k for k, v in aliases.items() if v == canonical]
         for k in stale:
             del aliases[k]
+        deleted_snapshot = _delete_codex_chatgpt_snapshot(canonical)
         pruned_profiles: list[str] = []
         for profile_name, profile in store.get("profiles", {}).items():
             changed = False
@@ -3911,6 +4130,8 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
     info(f"Removed provider: {canonical}")
     if stale:
         info(f"Removed stale aliases: {', '.join(stale)}")
+    if deleted_snapshot:
+        info(f"Removed Codex ChatGPT snapshot: {canonical}")
     if pruned_profiles:
         info(f"Updated profiles: {', '.join(pruned_profiles)}")
 
@@ -4249,21 +4470,41 @@ def write_codex(
         config_path = paths["config"]
 
         data = load_json(auth_path)
-        if not _codex_has_chatgpt_login_state(data):
+        live_has_chatgpt = _codex_has_chatgpt_login_state(data)
+        active_provider_name = _refresh_active_codex_chatgpt_snapshot(store)
+        managed_target = isinstance(store, dict) and provider_name in store.get("providers", {})
+        target_auth = _load_codex_chatgpt_snapshot(provider_name) if managed_target else None
+        if not live_has_chatgpt and target_auth is None:
             info(
                 "[codex] Skipped: ChatGPT login is missing or incomplete in auth.json. "
                 "Run `codex login` first, then try `cxsw pro` again."
             )
             return None
+        if target_auth is None:
+            if active_provider_name == provider_name or not managed_target:
+                target_auth = _normalize_codex_chatgpt_auth(data)
+            else:
+                info(_codex_chatgpt_provider_error(provider_name, "has no saved Codex ChatGPT snapshot"))
+                return None
+        target_account_id = _codex_chatgpt_account_id(target_auth)
+        if not _codex_chatgpt_conf_matches_account(conf, target_account_id):
+            info(
+                f"[codex] Skipped: provider '{provider_name}' snapshot does not match the stored ChatGPT account metadata."
+            )
+            return None
+        if isinstance(store, dict):
+            provider = store.get("providers", {}).get(provider_name)
+            if isinstance(provider, dict):
+                updated_target_conf = dict(conf)
+                if target_account_id:
+                    updated_target_conf["account_id"] = target_account_id
+                provider["codex"] = updated_target_conf
+                store.setdefault("providers", {})[provider_name] = provider
         auth_bak = backup_file(auth_path, enabled=create_backup)
         config_bak = backup_file(config_path, enabled=create_backup)
 
-        data.pop("OPENAI_API_KEY", None)
-        data.pop("OPENAI_BASE_URL", None)
-        data["auth_mode"] = CODEX_AUTH_MODE_CHATGPT
-
         def _persist() -> None:
-            save_json(auth_path, data)
+            save_json(auth_path, target_auth)
             if provider_route == CODEX_PROVIDER_ID:
                 upsert_codex_chatgpt_shared_config(config_path, provider_name)
             else:
@@ -4287,6 +4528,7 @@ def write_codex(
 
     token = resolve_token(conf.get("token"))
     base_url = select_codex_base_url(conf)
+    _refresh_active_codex_chatgpt_snapshot(store)
 
     if not token:
         info(f"[codex] Skipped: token unresolved (ref: {conf.get('token')!r})")
@@ -4653,6 +4895,8 @@ def _local_restore_validation(
                 mismatch_fields.append("auth_mode")
             if live.get("provider_route") != expected_route:
                 mismatch_fields.append("provider_route")
+            if conf.get("account_id") and live.get("account_id") and live.get("account_id") != conf.get("account_id"):
+                mismatch_fields.append("account_id")
             return {
                 "status": "ok" if not mismatch_fields else "degraded",
                 "reason_code": "ready" if not mismatch_fields else "live_config_mismatch",
@@ -5611,6 +5855,9 @@ def cmd_share_prepare(store: Dict[str, Any], lane: str, provider_name: str, sour
     if not isinstance(conf, dict):
         info(f"[error] Provider '{provider_name}' has no codex config.")
         sys.exit(1)
+    if _codex_uses_chatgpt_auth(conf) and not _codex_chatgpt_snapshot_exists(canonical):
+        info(_codex_chatgpt_provider_error(canonical, "has no saved Codex ChatGPT snapshot"))
+        sys.exit(1)
 
     cwd = os.getcwd()
     if source == CODEX_SHARE_DEFAULT_SOURCE:
@@ -5650,6 +5897,9 @@ def cmd_share_prepare(store: Dict[str, Any], lane: str, provider_name: str, sour
         conf = provider.get(CODEX_SHARE_TOOL) if isinstance(provider, dict) else None
         if not isinstance(conf, dict):
             info(f"[error] Provider '{provider_name}' has no codex config.")
+            sys.exit(1)
+        if _codex_uses_chatgpt_auth(conf) and not _codex_chatgpt_snapshot_exists(canonical):
+            info(_codex_chatgpt_provider_error(canonical, "has no saved Codex ChatGPT snapshot"))
             sys.exit(1)
         lanes = _get_codex_share_lanes(store)
         recipe["provider"] = canonical
@@ -5735,7 +5985,11 @@ def _read_current_codex(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         and (current_provider == CODEX_BUILTIN_PROVIDER_ID or selected_requires_openai_auth)
     ):
         provider_route = CODEX_PROVIDER_ID if current_provider == CODEX_PROVIDER_ID else CODEX_BUILTIN_PROVIDER_ID
-        return {"auth_mode": CODEX_AUTH_MODE_CHATGPT, "provider_route": provider_route}
+        conf: Dict[str, Any] = {"auth_mode": CODEX_AUTH_MODE_CHATGPT, "provider_route": provider_route}
+        account_id = _codex_chatgpt_account_id(auth)
+        if account_id:
+            conf["account_id"] = account_id
+        return conf
 
     token = auth.get("OPENAI_API_KEY")
     if not token:
@@ -5815,6 +6069,8 @@ def _clear_absent_import_fields(
     if tool == "codex" and imported_conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
         for field in ("token", "base_url", "fallback_base_url", "provider_route"):
             merged_conf.pop(field, None)
+    elif tool == "codex":
+        merged_conf.pop("account_id", None)
 
 
 def _read_current_opencode(
@@ -5942,7 +6198,8 @@ def cmd_import_current(
     """Import the current live configuration into a saved provider."""
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
-        provider = store.setdefault("providers", {}).get(name, {})
+        canonical = resolve_alias(store, name)
+        provider = store.setdefault("providers", {}).get(canonical, {})
         existing_conf = provider.get(tool) if isinstance(provider.get(tool), dict) else {}
         if tool == "claude":
             conf = _read_current_claude(store)
@@ -5965,7 +6222,7 @@ def cmd_import_current(
                 _reject_literal_secret("imported gemini api_key")
             conf["api_key"] = preserved
         elif tool == "codex" and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
-            pass
+            conf = _update_codex_chatgpt_provider(store, canonical, load_json(get_tool_paths(store, "codex")["auth"]))
         else:
             preserved = _preserve_secret_ref(existing_conf.get("token"), conf.get("token"))
             if not allow_literal_secrets and not _is_env_ref(preserved):
@@ -5975,9 +6232,74 @@ def cmd_import_current(
         merged_conf.update(conf)
         _clear_absent_import_fields(tool, merged_conf, conf)
         provider[tool] = merged_conf
-        store["providers"][name] = provider
+        store["providers"][canonical] = provider
         save_store(store, expected_revision=store.get("_revision"))
-    info(f"Imported current {tool} config into provider '{name}'.")
+    info(f"Imported current {tool} config into provider '{canonical}'.")
+
+
+def _capture_codex_locked(store: Dict[str, Any], name: str) -> str:
+    """Capture the current Codex ChatGPT login into one provider while holding the state lock."""
+    canonical = resolve_alias(store, name)
+    auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+    conf = _update_codex_chatgpt_provider(store, canonical, auth_data)
+    provider = store.setdefault("providers", {}).setdefault(canonical, {})
+    provider["codex"] = conf
+    save_store(store, expected_revision=store.get("_revision"))
+    return canonical
+
+
+def cmd_capture(store: Dict[str, Any], tool: str, name: str) -> None:
+    """Capture the current live official login into a saved provider."""
+    if tool != "codex":
+        info(f"[error] Capture is currently only supported for codex, not {tool}.")
+        sys.exit(1)
+    with _state_lock():
+        store = _load_fresh_store_from_lock(store)
+        canonical = _capture_codex_locked(store, name)
+    info(f"Captured current codex ChatGPT login into provider '{canonical}'.")
+
+
+def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
+    """Run the official Codex login flow, then capture it into one provider."""
+    if tool != "codex":
+        info(f"[error] Login capture is currently only supported for codex, not {tool}.")
+        sys.exit(1)
+    codex_executable = shutil.which("codex")
+    if not codex_executable:
+        info("[error] `codex` is not installed or not available on PATH.")
+        sys.exit(1)
+    codex_path = Path(codex_executable).expanduser().resolve()
+    if not codex_path.is_file() or not os.access(codex_path, os.X_OK):
+        info(f"[error] `codex` executable is not runnable: {codex_path}")
+        sys.exit(1)
+    with _state_lock():
+        store = _load_fresh_store_from_lock(store)
+        canonical = _preflight_codex_chatgpt_provider_target(store, name)
+        active_provider_name = store.get("active", {}).get("codex")
+        active_provider = store.get("providers", {}).get(active_provider_name) if active_provider_name else None
+        active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
+        if _codex_uses_chatgpt_auth(active_conf):
+            auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+            if _codex_has_chatgpt_login_state(auth_data):
+                conf = _update_codex_chatgpt_provider(store, active_provider_name, auth_data)
+                active_provider["codex"] = conf
+                store.setdefault("providers", {})[active_provider_name] = active_provider
+                save_store(store, expected_revision=store.get("_revision"))
+        with _codex_cli_home(store) as env:
+            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+            # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
+            logout = subprocess.run([str(codex_path), "logout"], env=env)
+            if logout.returncode != 0:
+                sys.exit(logout.returncode or 1)
+            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+            # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
+            login = subprocess.run([str(codex_path), "login"], env=env)
+            if login.returncode != 0:
+                sys.exit(login.returncode or 1)
+        canonical = _capture_codex_locked(store, canonical)
+        store.setdefault("active", {})["codex"] = canonical
+        save_store(store, expected_revision=store.get("_revision"))
+    info(f"Captured current codex ChatGPT login into provider '{canonical}'.")
 
 
 def _history_summary(entry: Dict[str, Any]) -> str:
@@ -6639,6 +6961,7 @@ def _probe_codex_target(
         config_content = paths["config"].read_text(encoding="utf-8") if paths["config"].exists() else ""
         current_provider = _read_toml_string_value(config_content, "model_provider")
         root_openai_base_url = _read_toml_string_value(config_content, "openai_base_url")
+        live_account_id = _codex_chatgpt_account_id(auth_data)
         provider_block = (
             _extract_toml_table_body(config_content, f"model_providers.{current_provider}")
             if current_provider
@@ -6648,13 +6971,16 @@ def _probe_codex_target(
             "auth_exists": paths["auth"].exists(),
             "auth_mode": auth_data.get("auth_mode"),
             "auth_has_openai_api_key": bool(auth_data.get("OPENAI_API_KEY")),
+            "auth_account_hint": _codex_chatgpt_account_hint(live_account_id),
             "config_exists": paths["config"].exists(),
             "model_provider": current_provider,
             "openai_base_url": root_openai_base_url,
             "provider_requires_openai_auth": _read_toml_literal_value(provider_block, "requires_openai_auth"),
             "provider_supports_websockets": _read_toml_literal_value(provider_block, "supports_websockets"),
             "provider_wire_api": _read_toml_string_value(provider_block, "wire_api"),
+            "snapshot_exists": _codex_chatgpt_snapshot_exists(provider_name),
         }
+        managed_target = provider_name in store.get("providers", {})
         mismatch_fields: list[str] = []
         if config_checks["auth_mode"] != CODEX_AUTH_MODE_CHATGPT:
             mismatch_fields.append("auth_mode")
@@ -6676,6 +7002,10 @@ def _probe_codex_target(
             mismatch_fields.append("openai_base_url")
         if config_checks["auth_has_openai_api_key"]:
             mismatch_fields.append("auth_has_openai_api_key")
+        if managed_target and not config_checks["snapshot_exists"]:
+            mismatch_fields.append("snapshot")
+        if conf.get("account_id") and live_account_id and conf.get("account_id") != live_account_id:
+            mismatch_fields.append("account_id")
         config_status = "ok" if not mismatch_fields else "degraded"
         checks = {
             "live_auth_check": _make_doctor_check(
@@ -7571,6 +7901,14 @@ def build_parser() -> argparse.ArgumentParser:
     share_clear = share_codex_sub.add_parser("clear", help="Delete one prepared Codex share lane")
     share_clear.add_argument("lane")
 
+    capture_p = sub.add_parser("capture", help="Capture a live official login into a provider")
+    capture_p.add_argument("tool", choices=("codex",))
+    capture_p.add_argument("name")
+
+    login_p = sub.add_parser("login", help="Run the official login flow, then capture it into a provider")
+    login_p.add_argument("tool", choices=("codex",))
+    login_p.add_argument("name")
+
     doctor_p = sub.add_parser("doctor", help="Validate configuration and probe health")
     doctor_p.add_argument("tool", nargs="?", default="all", choices=(*ALL_TOOLS, "all"))
     doctor_p.add_argument("provider", nargs="?")
@@ -7680,6 +8018,10 @@ def main() -> None:
         else:
             parser.print_help(sys.stderr)
             sys.exit(1)
+    elif args.command == "capture":
+        cmd_capture(store, args.tool, args.name)
+    elif args.command == "login":
+        cmd_login(store, args.tool, args.name)
     elif args.command == "doctor":
         ok = cmd_doctor(
             store,
