@@ -2272,6 +2272,9 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
             with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
                 ccsw, "DB_PATH", db_path
             ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch(
+                "ccsw.shutil.which",
+                return_value="codex",
+            ), patch(
                 "ccsw.subprocess.run",
                 side_effect=fake_run,
             ):
