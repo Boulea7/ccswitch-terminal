@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -960,7 +961,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
 
             subprocess.run(
                 [
-                    "python3",
+                    sys.executable,
                     "ccsw.py",
                     "add",
                     "pro",
@@ -974,7 +975,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 check=True,
             )
             subprocess.run(
-                ["python3", "ccsw.py", "capture", "codex", "pro"],
+                [sys.executable, "ccsw.py", "capture", "codex", "pro"],
                 cwd=REPO_ROOT,
                 env=env,
                 capture_output=True,
@@ -983,7 +984,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             )
 
             proc = subprocess.run(
-                ["python3", "ccsw.py", "codex", "pro"],
+                [sys.executable, "ccsw.py", "codex", "pro"],
                 cwd=REPO_ROOT,
                 env=env,
                 capture_output=True,
@@ -1132,6 +1133,61 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 },
             )
             self.assertFalse((root / ".ccswitch" / "codex.env").exists())
+
+    def test_write_codex_chatgpt_mode_restores_saved_snapshot_without_live_chatgpt_auth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            snapshot_dir = root / "codex-chatgpt"
+            snapshot_dir.mkdir(parents=True)
+            auth_path.write_text(json.dumps({"OPENAI_API_KEY": "relay-token"}), encoding="utf-8")
+            config_path.write_text(
+                'model = "gpt-5.4"\nmodel_provider = "ccswitch_active"\n\n[model_providers.ccswitch_active]\nname = "ccswitch: relay"\nbase_url = "https://relay.example/v1"\nenv_key = "OPENAI_API_KEY"\n',
+                encoding="utf-8",
+            )
+            (snapshot_dir / "pro.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "saved-pro", "account_id": "acct-pro"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "relay", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "relay": {"codex": {"base_url": "https://relay.example/v1", "token": "$RELAY"}},
+                    "pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}},
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "CODEX_AUTH", auth_path
+            ), patch.object(ccsw, "CODEX_CONFIG", config_path), patch.object(
+                ccsw, "CODEX_ENV_PATH", env_path
+            ):
+                exports = ccsw.write_codex(store["providers"]["pro"]["codex"], "pro", store)
+
+            auth = json.loads(auth_path.read_text(encoding="utf-8"))
+            config = config_path.read_text(encoding="utf-8")
+            self.assertEqual(exports, [])
+            self.assertEqual(
+                auth,
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "saved-pro", "account_id": "acct-pro"},
+                },
+            )
+            self.assertIn('model_provider = "openai"\n', config)
 
 if __name__ == "__main__":
     unittest.main()

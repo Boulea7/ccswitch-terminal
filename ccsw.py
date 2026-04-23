@@ -1741,6 +1741,9 @@ def _codex_chatgpt_snapshot_dir() -> Path:
 
 def _codex_chatgpt_snapshot_path(provider_name: str) -> Path:
     """Return the snapshot path for one Codex ChatGPT provider."""
+    if not _NAME_RE.match(provider_name):
+        info(f"[error] Invalid Codex ChatGPT snapshot provider name: {provider_name!r}")
+        sys.exit(1)
     return _codex_chatgpt_snapshot_dir() / f"{provider_name}.json"
 
 
@@ -1810,6 +1813,16 @@ def _load_codex_chatgpt_snapshot(provider_name: str) -> Optional[Dict[str, Any]]
         return None
     snapshot = load_json(path)
     return _normalize_codex_chatgpt_auth(snapshot)
+
+
+def _delete_codex_chatgpt_snapshot(provider_name: str) -> bool:
+    """Delete one saved Codex ChatGPT snapshot if it exists."""
+    path = _codex_chatgpt_snapshot_path(provider_name)
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def _codex_chatgpt_provider_error(provider_name: str, reason: str) -> str:
@@ -4060,6 +4073,7 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
         stale = [k for k, v in aliases.items() if v == canonical]
         for k in stale:
             del aliases[k]
+        deleted_snapshot = _delete_codex_chatgpt_snapshot(canonical)
         pruned_profiles: list[str] = []
         for profile_name, profile in store.get("profiles", {}).items():
             changed = False
@@ -4077,6 +4091,8 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
     info(f"Removed provider: {canonical}")
     if stale:
         info(f"Removed stale aliases: {', '.join(stale)}")
+    if deleted_snapshot:
+        info(f"Removed Codex ChatGPT snapshot: {canonical}")
     if pruned_profiles:
         info(f"Updated profiles: {', '.join(pruned_profiles)}")
 
@@ -4415,33 +4431,35 @@ def write_codex(
         config_path = paths["config"]
 
         data = load_json(auth_path)
-        if not _codex_has_chatgpt_login_state(data):
+        target_auth = _load_codex_chatgpt_snapshot(provider_name)
+        managed_target = isinstance(store, dict) and provider_name in store.get("providers", {})
+        live_has_chatgpt = _codex_has_chatgpt_login_state(data)
+        if not live_has_chatgpt and target_auth is None:
             info(
                 "[codex] Skipped: ChatGPT login is missing or incomplete in auth.json. "
                 "Run `codex login` first, then try `cxsw pro` again."
             )
             return None
-        live_account_id = _codex_chatgpt_account_id(data)
         active_provider_name = store.get("active", {}).get("codex") if isinstance(store, dict) else None
-        active_provider = (
-            store.get("providers", {}).get(active_provider_name)
-            if isinstance(store, dict) and active_provider_name
-            else None
-        )
-        active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
-        if _codex_uses_chatgpt_auth(active_conf):
-            if not _codex_chatgpt_conf_matches_account(active_conf, live_account_id):
-                info(
-                    f"[codex] Skipped: active provider '{active_provider_name}' no longer matches the live ChatGPT account. "
-                    f"Run `ccsw capture codex {active_provider_name}` or `ccsw login codex {active_provider_name}` first."
-                )
-                return None
-            updated_active_conf = _update_codex_chatgpt_provider(store, active_provider_name, data)
-            if isinstance(active_provider, dict):
-                active_provider["codex"] = updated_active_conf
-                store.setdefault("providers", {})[active_provider_name] = active_provider
-        target_auth = _load_codex_chatgpt_snapshot(provider_name)
-        managed_target = isinstance(store, dict) and provider_name in store.get("providers", {})
+        if live_has_chatgpt:
+            live_account_id = _codex_chatgpt_account_id(data)
+            active_provider = (
+                store.get("providers", {}).get(active_provider_name)
+                if isinstance(store, dict) and active_provider_name
+                else None
+            )
+            active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
+            if _codex_uses_chatgpt_auth(active_conf):
+                if not _codex_chatgpt_conf_matches_account(active_conf, live_account_id):
+                    info(
+                        f"[codex] Skipped: active provider '{active_provider_name}' no longer matches the live ChatGPT account. "
+                        f"Run `ccsw capture codex {active_provider_name}` or `ccsw login codex {active_provider_name}` first."
+                    )
+                    return None
+                updated_active_conf = _update_codex_chatgpt_provider(store, active_provider_name, data)
+                if isinstance(active_provider, dict):
+                    active_provider["codex"] = updated_active_conf
+                    store.setdefault("providers", {})[active_provider_name] = active_provider
         if target_auth is None:
             if active_provider_name == provider_name or not managed_target:
                 target_auth = _normalize_codex_chatgpt_auth(data)
@@ -6218,6 +6236,10 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
     if tool != "codex":
         info(f"[error] Login capture is currently only supported for codex, not {tool}.")
         sys.exit(1)
+    codex_executable = shutil.which("codex")
+    if not codex_executable:
+        info("[error] `codex` is not installed or not available on PATH.")
+        sys.exit(1)
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
         canonical = resolve_alias(store, name)
@@ -6232,10 +6254,10 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
                 store.setdefault("providers", {})[active_provider_name] = active_provider
                 save_store(store, expected_revision=store.get("_revision"))
     with _codex_cli_home(store) as env:
-        logout = subprocess.run(["codex", "logout"], env=env)
+        logout = subprocess.run([codex_executable, "logout"], env=env)
         if logout.returncode != 0:
             sys.exit(logout.returncode or 1)
-        login = subprocess.run(["codex", "login"], env=env)
+        login = subprocess.run([codex_executable, "login"], env=env)
         if login.returncode != 0:
             sys.exit(login.returncode or 1)
     cmd_capture(store, tool, canonical)

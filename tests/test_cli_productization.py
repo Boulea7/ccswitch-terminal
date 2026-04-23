@@ -845,30 +845,63 @@ class ProfileAndRunTests(unittest.TestCase):
         switch_tool.assert_not_called()
 
     def test_cmd_remove_prunes_deleted_provider_from_profiles(self) -> None:
-        store = {
-            "version": 2,
-            "active": {tool: None for tool in ccsw.ALL_TOOLS},
-            "aliases": {"demo-alias": "demo"},
-            "providers": {
-                "demo": {
-                    "codex": {"base_url": "https://example.com/v1", "token": "a"},
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {"demo-alias": "demo"},
+                "providers": {
+                    "demo": {
+                        "codex": {"base_url": "https://example.com/v1", "token": "a"},
+                    },
+                    "other": {
+                        "codex": {"base_url": "https://backup.example.com/v1", "token": "b"},
+                    },
                 },
-                "other": {
-                    "codex": {"base_url": "https://backup.example.com/v1", "token": "b"},
+                "profiles": {
+                    "work": {"codex": ["demo", "other"]},
+                    "secondary": {"codex": ["demo"]},
                 },
-            },
-            "profiles": {
-                "work": {"codex": ["demo", "other"]},
-                "secondary": {"codex": ["demo"]},
-            },
-            "settings": {},
-        }
+                "settings": {},
+            }
 
-        with patch("ccsw.save_store"):
-            ccsw.cmd_remove(store, "demo")
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch("ccsw.save_store"):
+                ccsw.cmd_remove(store, "demo")
 
-        self.assertEqual(store["profiles"]["work"]["codex"], ["other"])
-        self.assertEqual(store["profiles"]["secondary"]["codex"], [])
+            self.assertEqual(store["profiles"]["work"]["codex"], ["other"])
+            self.assertEqual(store["profiles"]["secondary"]["codex"], [])
+
+    def test_cmd_remove_deletes_codex_chatgpt_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            snapshot_dir = root / "codex-chatgpt"
+            snapshot_dir.mkdir(parents=True)
+            (snapshot_dir / "demo.json").write_text(
+                json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": "demo"}}),
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {tool: None for tool in ccsw.ALL_TOOLS},
+                "aliases": {},
+                "providers": {"demo": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-demo"}}},
+                "profiles": {},
+                "settings": {},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch("ccsw.save_store"):
+                ccsw.cmd_remove(store, "demo")
+
+            self.assertFalse((snapshot_dir / "demo.json").exists())
         self.assertNotIn("demo-alias", store["aliases"])
 
     def test_run_with_fallback_records_setup_failures_as_non_retryable(self) -> None:
@@ -2220,10 +2253,10 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 fake_home = Path(env["HOME"])
                 temp_codex_dir = fake_home / ".codex"
                 temp_codex_dir.mkdir(parents=True, exist_ok=True)
-                if argv == ["codex", "logout"]:
+                if argv[1:] == ["logout"]:
                     (temp_codex_dir / "auth.json").write_text(json.dumps({}), encoding="utf-8")
                     return subprocess.CompletedProcess(argv, 0, "", "")
-                if argv == ["codex", "login"]:
+                if argv[1:] == ["login"]:
                     (temp_codex_dir / "auth.json").write_text(
                         json.dumps(
                             {
@@ -2268,6 +2301,41 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                     "tokens": {"access_token": "live-pro1", "account_id": "acct-pro1"},
                 },
             )
+
+    def test_cmd_login_codex_errors_when_codex_executable_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text('model_provider = "openai"\n', encoding="utf-8")
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {"pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}}},
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch(
+                "ccsw.shutil.which",
+                return_value=None,
+            ), patch("ccsw.save_store"):
+                with self.assertRaises(SystemExit):
+                    ccsw.cmd_login(store, "codex", "pro")
 
     def test_import_current_gemini_reads_escaped_secret_from_active_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
