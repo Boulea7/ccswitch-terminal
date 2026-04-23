@@ -657,7 +657,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
 
             subprocess.run(
                 [
-                    "python3",
+                    sys.executable,
                     "ccsw.py",
                     "add",
                     "demo-codex",
@@ -674,7 +674,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             )
 
             subprocess.run(
-                ["python3", "ccsw.py", "codex", "demo-codex"],
+                [sys.executable, "ccsw.py", "codex", "demo-codex"],
                 cwd=REPO_ROOT,
                 env=env,
                 capture_output=True,
@@ -885,7 +885,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
 
             subprocess.run(
                 [
-                    "python3",
+                    sys.executable,
                     "ccsw.py",
                     "add",
                     "demo-provider",
@@ -902,7 +902,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             )
 
             proc = subprocess.run(
-                ["python3", "ccsw.py", "codex", "demo-provider"],
+                [sys.executable, "ccsw.py", "codex", "demo-provider"],
                 cwd=REPO_ROOT,
                 env=env,
                 capture_output=True,
@@ -1074,6 +1074,7 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                     "tokens": {"access_token": "live-pro1", "account_id": "acct-pro1"},
                 },
             )
+            self.assertNotIn("OPENAI_API_KEY", refreshed)
             self.assertEqual(
                 refreshed,
                 {
@@ -1132,7 +1133,12 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                     "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
                 },
             )
+            self.assertEqual(
+                config_path.read_text(encoding="utf-8"),
+                'model = "gpt-5.4"\nmodel_provider = "openai"\n',
+            )
             self.assertFalse((root / ".ccswitch" / "codex.env").exists())
+            self.assertFalse((root / "codex-chatgpt" / "pro1.json").exists())
 
     def test_write_codex_chatgpt_mode_restores_saved_snapshot_without_live_chatgpt_auth(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1188,6 +1194,11 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
                 },
             )
             self.assertIn('model_provider = "openai"\n', config)
+            self.assertEqual(
+                env_path.read_text(encoding="utf-8"),
+                "unset OPENAI_API_KEY\nunset OPENAI_BASE_URL\n",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

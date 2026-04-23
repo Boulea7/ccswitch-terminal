@@ -2400,6 +2400,25 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 ccsw.cmd_login(store, "codex", "pro")
 
+    def test_cmd_login_codex_rejects_existing_non_chatgpt_provider_before_logout(self) -> None:
+        store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {},
+            "providers": {"pro": {"codex": {"base_url": "https://relay.example/v1", "token": "$TOKEN"}}},
+            "profiles": {},
+            "settings": {},
+        }
+
+        with patch("ccsw.shutil.which", return_value=sys.executable), patch(
+            "ccsw.os.access",
+            return_value=True,
+        ), patch("ccsw.subprocess.run") as subprocess_run:
+            with self.assertRaises(SystemExit):
+                ccsw.cmd_login(store, "codex", "pro")
+
+        subprocess_run.assert_not_called()
+
     def test_import_current_gemini_reads_escaped_secret_from_active_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

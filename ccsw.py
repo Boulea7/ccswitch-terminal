@@ -1833,6 +1833,18 @@ def _codex_chatgpt_provider_error(provider_name: str, reason: str) -> str:
     )
 
 
+def _preflight_codex_chatgpt_provider_target(store: Dict[str, Any], name: str) -> str:
+    """Validate one target provider name before running ChatGPT-specific flows."""
+    canonical = resolve_alias(store, name)
+    _codex_chatgpt_snapshot_path(canonical)
+    provider = store.get("providers", {}).get(canonical)
+    conf = provider.get("codex") if isinstance(provider, dict) else None
+    if isinstance(conf, dict) and not _codex_uses_chatgpt_auth(conf):
+        info(f"[error] Provider '{canonical}' already has a non-ChatGPT codex config.")
+        sys.exit(1)
+    return canonical
+
+
 def _update_codex_chatgpt_provider(store: Dict[str, Any], provider_name: str, auth_data: Dict[str, Any]) -> Dict[str, Any]:
     """Capture the current ChatGPT login into one provider and update store metadata."""
     providers = store.setdefault("providers", {})
@@ -1857,6 +1869,32 @@ def _update_codex_chatgpt_provider(store: Dict[str, Any], provider_name: str, au
     provider["codex"] = updated_conf
     providers[provider_name] = provider
     return updated_conf
+
+
+def _refresh_active_codex_chatgpt_snapshot(store: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Refresh the active Codex ChatGPT snapshot from live auth when possible."""
+    if not isinstance(store, dict):
+        return None
+    active_provider_name = store.get("active", {}).get("codex")
+    active_provider = store.get("providers", {}).get(active_provider_name) if active_provider_name else None
+    active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
+    if not _codex_uses_chatgpt_auth(active_conf):
+        return None
+    auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+    if not _codex_has_chatgpt_login_state(auth_data):
+        return active_provider_name
+    live_account_id = _codex_chatgpt_account_id(auth_data)
+    if not _codex_chatgpt_conf_matches_account(active_conf, live_account_id):
+        info(
+            f"[codex] Skipped: active provider '{active_provider_name}' no longer matches the live ChatGPT account. "
+            f"Run `ccsw capture codex {active_provider_name}` or `ccsw login codex {active_provider_name}` first."
+        )
+        sys.exit(1)
+    updated_active_conf = _update_codex_chatgpt_provider(store, active_provider_name, auth_data)
+    if isinstance(active_provider, dict):
+        active_provider["codex"] = updated_active_conf
+        store.setdefault("providers", {})[active_provider_name] = active_provider
+    return active_provider_name
 
 
 @contextlib.contextmanager
@@ -4058,6 +4096,7 @@ def cmd_remove(store: Dict[str, Any], name: str) -> None:
     if canonical in BUILTIN_PROVIDERS:
         info(f"[error] Built-in provider '{canonical}' cannot be removed.")
         sys.exit(1)
+    deleted_snapshot = False
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
         canonical = resolve_alias(store, name)
@@ -4431,35 +4470,16 @@ def write_codex(
         config_path = paths["config"]
 
         data = load_json(auth_path)
-        target_auth = _load_codex_chatgpt_snapshot(provider_name)
-        managed_target = isinstance(store, dict) and provider_name in store.get("providers", {})
         live_has_chatgpt = _codex_has_chatgpt_login_state(data)
+        active_provider_name = _refresh_active_codex_chatgpt_snapshot(store)
+        managed_target = isinstance(store, dict) and provider_name in store.get("providers", {})
+        target_auth = _load_codex_chatgpt_snapshot(provider_name) if managed_target else None
         if not live_has_chatgpt and target_auth is None:
             info(
                 "[codex] Skipped: ChatGPT login is missing or incomplete in auth.json. "
                 "Run `codex login` first, then try `cxsw pro` again."
             )
             return None
-        active_provider_name = store.get("active", {}).get("codex") if isinstance(store, dict) else None
-        if live_has_chatgpt:
-            live_account_id = _codex_chatgpt_account_id(data)
-            active_provider = (
-                store.get("providers", {}).get(active_provider_name)
-                if isinstance(store, dict) and active_provider_name
-                else None
-            )
-            active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
-            if _codex_uses_chatgpt_auth(active_conf):
-                if not _codex_chatgpt_conf_matches_account(active_conf, live_account_id):
-                    info(
-                        f"[codex] Skipped: active provider '{active_provider_name}' no longer matches the live ChatGPT account. "
-                        f"Run `ccsw capture codex {active_provider_name}` or `ccsw login codex {active_provider_name}` first."
-                    )
-                    return None
-                updated_active_conf = _update_codex_chatgpt_provider(store, active_provider_name, data)
-                if isinstance(active_provider, dict):
-                    active_provider["codex"] = updated_active_conf
-                    store.setdefault("providers", {})[active_provider_name] = active_provider
         if target_auth is None:
             if active_provider_name == provider_name or not managed_target:
                 target_auth = _normalize_codex_chatgpt_auth(data)
@@ -4508,6 +4528,7 @@ def write_codex(
 
     token = resolve_token(conf.get("token"))
     base_url = select_codex_base_url(conf)
+    _refresh_active_codex_chatgpt_snapshot(store)
 
     if not token:
         info(f"[codex] Skipped: token unresolved (ref: {conf.get('token')!r})")
@@ -6253,7 +6274,7 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
         sys.exit(1)
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
-        canonical = resolve_alias(store, name)
+        canonical = _preflight_codex_chatgpt_provider_target(store, name)
         active_provider_name = store.get("active", {}).get("codex")
         active_provider = store.get("providers", {}).get(active_provider_name) if active_provider_name else None
         active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
