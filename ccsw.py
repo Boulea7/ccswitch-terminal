@@ -6247,6 +6247,10 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
     if not codex_executable:
         info("[error] `codex` is not installed or not available on PATH.")
         sys.exit(1)
+    codex_path = Path(codex_executable).expanduser().resolve()
+    if not codex_path.is_file() or not os.access(codex_path, os.X_OK):
+        info(f"[error] `codex` executable is not runnable: {codex_path}")
+        sys.exit(1)
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
         canonical = resolve_alias(store, name)
@@ -6261,10 +6265,10 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
                 store.setdefault("providers", {})[active_provider_name] = active_provider
                 save_store(store, expected_revision=store.get("_revision"))
         with _codex_cli_home(store) as env:
-            logout = subprocess.run([codex_executable, "logout"], env=env)
+            logout = subprocess.run([str(codex_path), "logout"], env=env)
             if logout.returncode != 0:
                 sys.exit(logout.returncode or 1)
-            login = subprocess.run([codex_executable, "login"], env=env)
+            login = subprocess.run([str(codex_path), "login"], env=env)
             if login.returncode != 0:
                 sys.exit(login.returncode or 1)
         canonical = _capture_codex_locked(store, canonical)

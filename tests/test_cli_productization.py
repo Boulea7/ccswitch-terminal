@@ -2313,7 +2313,10 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 ccsw, "DB_PATH", db_path
             ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch(
                 "ccsw.shutil.which",
-                return_value="codex",
+                return_value=sys.executable,
+            ), patch(
+                "ccsw.os.access",
+                return_value=True,
             ), patch(
                 "ccsw.subprocess.run",
                 side_effect=fake_run,
@@ -2379,6 +2382,23 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
             ), patch("ccsw.save_store"):
                 with self.assertRaises(SystemExit):
                     ccsw.cmd_login(store, "codex", "pro")
+
+    def test_cmd_login_codex_errors_when_resolved_executable_is_not_runnable(self) -> None:
+        store = {
+            "version": 2,
+            "active": {tool: None for tool in ccsw.ALL_TOOLS},
+            "aliases": {},
+            "providers": {},
+            "profiles": {},
+            "settings": {},
+        }
+
+        with patch("ccsw.shutil.which", return_value="/tmp/fake-codex"), patch(
+            "ccsw.os.access",
+            return_value=False,
+        ):
+            with self.assertRaises(SystemExit):
+                ccsw.cmd_login(store, "codex", "pro")
 
     def test_import_current_gemini_reads_escaped_secret_from_active_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
