@@ -6297,6 +6297,8 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
             if login.returncode != 0:
                 sys.exit(login.returncode or 1)
         canonical = _capture_codex_locked(store, canonical)
+        store.setdefault("active", {})["codex"] = canonical
+        save_store(store, expected_revision=store.get("_revision"))
     info(f"Captured current codex ChatGPT login into provider '{canonical}'.")
 
 

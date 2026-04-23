@@ -875,6 +875,7 @@ class ProfileAndRunTests(unittest.TestCase):
 
             self.assertEqual(store["profiles"]["work"]["codex"], ["other"])
             self.assertEqual(store["profiles"]["secondary"]["codex"], [])
+            self.assertNotIn("demo-alias", store["aliases"])
 
     def test_cmd_remove_deletes_codex_chatgpt_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -902,7 +903,6 @@ class ProfileAndRunTests(unittest.TestCase):
                 ccsw.cmd_remove(store, "demo")
 
             self.assertFalse((snapshot_dir / "demo.json").exists())
-        self.assertNotIn("demo-alias", store["aliases"])
 
     def test_run_with_fallback_records_setup_failures_as_non_retryable(self) -> None:
         store = {
@@ -969,6 +969,10 @@ class ProfileAndRunTests(unittest.TestCase):
                 ccsw, "LOCAL_ENV_PATH", local_env
             ), patch.object(ccsw, "LOCAL_ENV_INJECTED_KEYS", set()), patch.object(
                 ccsw, "CCSWITCH_DIR", root / ".ccswitch"
+            ), patch.object(
+                ccsw, "DB_PATH", root / ".ccswitch" / "ccswitch.db"
+            ), patch.object(
+                ccsw, "PROVIDERS_PATH", root / ".ccswitch" / "providers.json"
             ), patch.object(
                 ccsw, "TMP_DIR", root / ".ccswitch" / "tmp"
             ):
@@ -2311,7 +2315,9 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
 
             with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
                 ccsw, "DB_PATH", db_path
-            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch(
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ), patch(
                 "ccsw.shutil.which",
                 return_value=sys.executable,
             ), patch(
@@ -2333,6 +2339,7 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 reloaded["providers"]["pro1"]["codex"],
                 {"auth_mode": "chatgpt", "account_id": "acct-pro1"},
             )
+            self.assertEqual(reloaded["active"]["codex"], "pro1")
             self.assertEqual(
                 json.loads((root / "codex-chatgpt" / "pro.json").read_text(encoding="utf-8")),
                 {
