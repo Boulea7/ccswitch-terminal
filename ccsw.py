@@ -1871,7 +1871,24 @@ def _update_codex_chatgpt_provider(store: Dict[str, Any], provider_name: str, au
     return updated_conf
 
 
-def _refresh_active_codex_chatgpt_snapshot(store: Optional[Dict[str, Any]]) -> Optional[str]:
+def _find_codex_chatgpt_provider_for_account(store: Dict[str, Any], account_id: Optional[str]) -> Optional[str]:
+    """Find a ChatGPT provider whose saved metadata exactly matches one account."""
+    if not isinstance(account_id, str) or not account_id:
+        return None
+    for name, provider in store.get("providers", {}).items():
+        conf = provider.get("codex") if isinstance(provider, dict) else None
+        if not _codex_uses_chatgpt_auth(conf):
+            continue
+        if conf.get("account_id") == account_id:
+            return name
+    return None
+
+
+def _refresh_active_codex_chatgpt_snapshot(
+    store: Optional[Dict[str, Any]],
+    *,
+    allow_account_mismatch: bool = False,
+) -> Optional[str]:
     """Refresh the active Codex ChatGPT snapshot from live auth when possible."""
     if not isinstance(store, dict):
         return None
@@ -1885,6 +1902,16 @@ def _refresh_active_codex_chatgpt_snapshot(store: Optional[Dict[str, Any]]) -> O
         return active_provider_name
     live_account_id = _codex_chatgpt_account_id(auth_data)
     if not _codex_chatgpt_conf_matches_account(active_conf, live_account_id):
+        matching_provider_name = _find_codex_chatgpt_provider_for_account(store, live_account_id)
+        if matching_provider_name:
+            matching_provider = store.get("providers", {}).get(matching_provider_name)
+            updated_matching_conf = _update_codex_chatgpt_provider(store, matching_provider_name, auth_data)
+            if isinstance(matching_provider, dict):
+                matching_provider["codex"] = updated_matching_conf
+                store.setdefault("providers", {})[matching_provider_name] = matching_provider
+            return matching_provider_name
+        if allow_account_mismatch:
+            return None
         info(
             f"[codex] Skipped: active provider '{active_provider_name}' no longer matches the live ChatGPT account. "
             f"Run `ccsw capture codex {active_provider_name}` or `ccsw login codex {active_provider_name}` first."
@@ -6275,16 +6302,8 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
     with _state_lock():
         store = _load_fresh_store_from_lock(store)
         canonical = _preflight_codex_chatgpt_provider_target(store, name)
-        active_provider_name = store.get("active", {}).get("codex")
-        active_provider = store.get("providers", {}).get(active_provider_name) if active_provider_name else None
-        active_conf = active_provider.get("codex") if isinstance(active_provider, dict) else None
-        if _codex_uses_chatgpt_auth(active_conf):
-            auth_data = load_json(get_tool_paths(store, "codex")["auth"])
-            if _codex_has_chatgpt_login_state(auth_data):
-                conf = _update_codex_chatgpt_provider(store, active_provider_name, auth_data)
-                active_provider["codex"] = conf
-                store.setdefault("providers", {})[active_provider_name] = active_provider
-                save_store(store, expected_revision=store.get("_revision"))
+        if _refresh_active_codex_chatgpt_snapshot(store, allow_account_mismatch=True):
+            save_store(store, expected_revision=store.get("_revision"))
         with _codex_cli_home(store) as env:
             # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
             # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.

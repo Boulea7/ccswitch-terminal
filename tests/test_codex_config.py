@@ -1140,6 +1140,79 @@ class CodexSwitchIntegrationTests(unittest.TestCase):
             self.assertFalse((root / ".ccswitch" / "codex.env").exists())
             self.assertFalse((root / "codex-chatgpt" / "pro1.json").exists())
 
+    def test_write_codex_chatgpt_mode_recovers_when_live_account_matches_another_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            auth_path = codex_dir / "auth.json"
+            config_path = codex_dir / "config.toml"
+            env_path = root / ".ccswitch" / "codex.env"
+            snapshot_dir = root / "codex-chatgpt"
+            snapshot_dir.mkdir(parents=True)
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "rotated-pro1", "account_id": "acct-pro1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path.write_text('model = "gpt-5.4"\nmodel_provider = "openai"\n', encoding="utf-8")
+            (snapshot_dir / "pro.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "saved-pro", "account_id": "acct-pro"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (snapshot_dir / "pro1.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "stale-pro1", "account_id": "acct-pro1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}},
+                    "pro1": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro1"}},
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "CODEX_AUTH", auth_path
+            ), patch.object(ccsw, "CODEX_CONFIG", config_path), patch.object(
+                ccsw, "CODEX_ENV_PATH", env_path
+            ):
+                ccsw.write_codex(store["providers"]["pro"]["codex"], "pro", store)
+
+            self.assertEqual(
+                json.loads(auth_path.read_text(encoding="utf-8")),
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "saved-pro", "account_id": "acct-pro"},
+                },
+            )
+            self.assertEqual(
+                json.loads((snapshot_dir / "pro1.json").read_text(encoding="utf-8")),
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "rotated-pro1", "account_id": "acct-pro1"},
+                },
+            )
+            self.assertIn('model_provider = "openai"\n', config_path.read_text(encoding="utf-8"))
+
     def test_write_codex_chatgpt_mode_restores_saved_snapshot_without_live_chatgpt_auth(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -2355,6 +2355,109 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 },
             )
 
+    def test_cmd_login_codex_allows_live_account_to_match_non_active_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            snapshot_dir = root / "codex-chatgpt"
+            codex_dir.mkdir(parents=True)
+            snapshot_dir.mkdir(parents=True)
+            (codex_dir / "auth.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "rotated-pro1", "account_id": "acct-pro1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (codex_dir / "config.toml").write_text('model_provider = "openai"\n', encoding="utf-8")
+            (snapshot_dir / "pro.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "saved-pro", "account_id": "acct-pro"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (snapshot_dir / "pro1.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {"access_token": "stale-pro1", "account_id": "acct-pro1"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}},
+                    "pro1": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro1"}},
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            def fake_run(argv: list[str], env: Optional[Dict[str, str]] = None, check: bool = False, **_: Any) -> subprocess.CompletedProcess[str]:
+                self.assertIsNotNone(env)
+                temp_codex_dir = Path(env["HOME"]) / ".codex"
+                temp_codex_dir.mkdir(parents=True, exist_ok=True)
+                if argv[1:] == ["logout"]:
+                    (temp_codex_dir / "auth.json").write_text(json.dumps({}), encoding="utf-8")
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                if argv[1:] == ["login"]:
+                    (temp_codex_dir / "auth.json").write_text(
+                        json.dumps(
+                            {
+                                "auth_mode": "chatgpt",
+                                "tokens": {"access_token": "fresh-pro1", "account_id": "acct-pro1"},
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                raise AssertionError(argv)
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ), patch(
+                "ccsw.shutil.which",
+                return_value=sys.executable,
+            ), patch(
+                "ccsw.os.access",
+                return_value=True,
+            ), patch(
+                "ccsw.subprocess.run",
+                side_effect=fake_run,
+            ):
+                ccsw.save_store(store)
+                ccsw.cmd_login(store, "codex", "pro1")
+                reloaded = ccsw.load_store()
+
+            self.assertEqual(reloaded["active"]["codex"], "pro1")
+            self.assertEqual(
+                json.loads((snapshot_dir / "pro.json").read_text(encoding="utf-8")),
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "saved-pro", "account_id": "acct-pro"},
+                },
+            )
+            self.assertEqual(
+                json.loads((snapshot_dir / "pro1.json").read_text(encoding="utf-8")),
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "fresh-pro1", "account_id": "acct-pro1"},
+                },
+            )
+
     def test_cmd_login_codex_errors_when_codex_executable_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
