@@ -68,3 +68,14 @@ These are response targets, not guarantees of a fixed release date.
 - Prefer reproductions that use temp directories, fake homes, and test tokens.
 - If the issue depends on generated `~/.ccswitch/*.env` files, describe the shell and whether it is POSIX-compatible.
 - If you must attach config examples, replace provider names, relay domains, and file paths with placeholders before sending them.
+
+## Codex ChatGPT Snapshot Reports
+
+Codex ChatGPT providers may involve local snapshots of `~/.codex/auth.json` under `~/.ccswitch/codex-chatgpt/`. Treat those files as private credentials.
+
+When reporting Codex account switching issues:
+
+- Redact `chatgpt_access_token`, `id_token`, refresh tokens, cookies, and account-specific identifiers.
+- Replace real emails and provider names with placeholders such as `user-a@example.test`, `pro`, and `pro1`.
+- Include whether you used `ccsw capture codex <provider>`, `ccsw login codex <provider>`, `cxsw sync on`, or `cxsw share prepare`.
+- Separate Codex CLI login problems from Codex Apps / remote MCP startup problems. MCP errors involving `codex_apps`, `openaiDeveloperDocs`, `deepwiki`, OAuth, proxy, or WebSocket transport may need their own sanitized diagnostics.

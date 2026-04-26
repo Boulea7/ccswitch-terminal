@@ -180,6 +180,9 @@ cxsw pro1
 
 These snapshots are meant for sequential switching on this machine only. They are not a recommendation to copy `~/.codex/auth.json` between machines. `ccsw import current codex <provider>` still works when the live Codex state is already on the official ChatGPT lane; when old relay overrides may still be hanging around locally, `ccsw capture codex ...` is the safer wrapper.
 
+> [!TIP]
+> `ccswitch` manages the Codex CLI login state and provider lane only. Codex Apps, remote MCP servers, OAuth grants, proxy routing, and WebSocket transport are still owned by Codex itself. If `codex_apps`, `openaiDeveloperDocs`, or `deepwiki` fails during MCP startup, check the Codex version, proxy path, and MCP authorization before treating it as a provider switch failure.
+
 By default, `cxsw pro` stays on that native `openai` lane. It does not share a provider id with relay-backed Codex providers, and it does not rewrite old sessions.
 
 If you only want **future official Codex sessions** to enter a shared lane, turn on the future-only sync toggle explicitly:
@@ -391,6 +394,8 @@ This matters for OpenAI-compatible relays that support HTTP Responses but not th
 If a Codex provider uses `--codex-auth-mode chatgpt`, `ccswitch` does not write the custom block above. It switches `model_provider` back to the built-in `openai` provider instead, and clears `openai_base_url` plus the `OPENAI_API_KEY` override so the official ChatGPT login state can take over cleanly.
 
 Multi-account official switching relies on `ccswitch`'s own private local snapshots instead of asking you to copy `auth.json` around. That lets `ccswitch` refresh the current provider before switching away, which lowers the chance of a rotated refresh token going stale.
+
+Codex Apps, remote MCP servers, OAuth grants, proxy routing, and WebSocket transport are not part of the `ccswitch` provider store. Startup failures for `codex_apps`, `openaiDeveloperDocs`, or `deepwiki` usually need to be investigated through the Codex version, proxy setup, MCP OAuth state, or the remote service itself.
 
 If you explicitly run `cxsw sync on`, the next `cxsw pro` will instead route that ChatGPT login through the shared `ccswitch_active` provider id. This is a future-session toggle only; it does not migrate older sessions.
 

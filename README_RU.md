@@ -275,6 +275,8 @@ ccsw settings set openclaw_config_dir ~/.openclaw-alt
 
 Если на одной машине нужно держать несколько официальных аккаунтов, сохраните текущий через `cxsw capture pro`, а следующий зарегистрируйте через `cxsw login pro1`. Эти snapshots предназначены только для последовательного переключения на этой машине; вручную копировать `auth.json` между машинами не рекомендуется.
 
+`ccswitch` управляет только локальным состоянием входа Codex CLI и provider lane. Codex Apps, удалённые MCP, OAuth, proxy и WebSocket остаются зоной Codex; если при старте падают `codex_apps`, `openaiDeveloperDocs` или `deepwiki`, сначала проверьте версию Codex, proxy и MCP-авторизацию, а не считайте это ошибкой переключения provider.
+
 По умолчанию `cxsw pro` остаётся на встроенной lane `openai`. Только если вы явно включите `cxsw sync on`, а потом снова выполните `cxsw pro`, будущие официальные сессии перейдут в shared lane. Старые сессии не мигрируются.
 
 `cxsw share prepare ...` не переключает provider и не делает автоматический `fork` сессии. Команда только сохраняет recipe со следующими шагами, например `cxsw ...` и `codex fork ...`.

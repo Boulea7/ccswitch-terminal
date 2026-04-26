@@ -275,6 +275,8 @@ Codex では `model_provider` を明示的に書き、必要に応じて `suppor
 
 同じマシンで複数の公式アカウントを使う場合は、現在のものを `cxsw capture pro` で保存し、次のものを `cxsw login pro1` で登録します。snapshot はローカル私有用途で、同じマシン上の順次切り替えだけを想定しています。`auth.json` を手で別マシンへコピーする運用は推奨しません。
 
+`ccswitch` が管理するのは Codex CLI のログイン状態と provider lane だけです。Codex Apps、remote MCP、OAuth、proxy、WebSocket は Codex 側の領域です。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` の起動失敗は、provider 切り替え失敗と決めずに Codex のバージョン、proxy、MCP 認可を確認してください。
+
 `cxsw pro` はデフォルトでは内蔵 `openai` lane のままです。`cxsw sync on` を明示的に有効にしたあとで再度 `cxsw pro` を実行した場合だけ、将来の公式 ChatGPT セッションを共有 lane に寄せます。既存セッションは移行しません。
 
 `cxsw share prepare ...` は provider 切り替えや session fork を自動実行しません。次に打つべき `cxsw ...` / `codex fork ...` の recipe を保存するだけです。

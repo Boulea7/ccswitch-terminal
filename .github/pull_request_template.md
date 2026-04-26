@@ -17,4 +17,5 @@
 - [ ] Docs are updated where behavior changed
 - [ ] `CHANGELOG.md` and `RELEASING.md` were reviewed if the public release surface changed
 - [ ] Secrets are not included in the diff
+- [ ] Real account emails, local paths, and provider names are redacted when examples or logs are included
 - [ ] Verification notes are accurate and complete

@@ -180,6 +180,9 @@ cxsw pro1
 
 这套快照只适合这台机器上的顺序切换，不适合手动复制 `~/.codex/auth.json` 去做跨机器共享。`ccsw import current codex <provider>` 仍然可用；如果当前 live Codex 已经在官方 ChatGPT lane 上，它也能导入同类 provider。若本地还残留旧的 relay 覆盖，优先用 `ccsw capture codex ...` 会更直接。
 
+> [!TIP]
+> `ccswitch` 只管理 Codex CLI 的登录态和 provider lane。Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接由 Codex 自己处理；如果看到 `codex_apps`、`openaiDeveloperDocs`、`deepwiki` 之类 MCP 握手失败，优先检查 Codex 版本、网络代理和 MCP 自身授权，不要把它直接当成 provider 切换失败。
+
 默认情况下，`cxsw pro` 仍然会走这条原生 `openai` 路径，不会和中转站共享 provider id，也不会改动旧 session。
 
 如果你只想让**后续新开的官方 Codex 会话**进入共享 lane，可以显式打开 future-only 开关：
@@ -391,6 +394,8 @@ wire_api = "responses"
 如果 Codex provider 使用的是 `--codex-auth-mode chatgpt`，`ccswitch` 不会写上面的自定义 block，而是直接把 `model_provider` 切回内置 `openai`，同时清掉 `openai_base_url` 和 `OPENAI_API_KEY` 覆盖项，避免和官方 ChatGPT 登录态互相覆盖。
 
 多官方账号切换依赖 `ccswitch` 自己保存的本地私有快照，而不是建议你静态复制 `auth.json`。这样在切走当前账号前，可以先把最新登录态刷新回它自己的 provider，减少 refresh token 轮换带来的失效概率。
+
+Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接不属于 `ccswitch` 的 provider store。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` 这类启动错误通常需要从 Codex 版本、网络代理、MCP OAuth 或远端服务状态排查。
 
 如果你显式执行 `cxsw sync on`，后续再运行 `cxsw pro` 时，`ccswitch` 才会把 ChatGPT 登录态写到共享 lane 的 `ccswitch_active` provider id。这个开关只影响 future sessions，不会迁移旧会话。
 

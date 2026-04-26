@@ -24,6 +24,7 @@ body:
         - bootstrap / shell wrapper
         - claude
         - codex
+        - codex official login / MCP
         - gemini
         - opencode
         - openclaw
@@ -85,6 +86,8 @@ body:
       label: Verification
       options:
         - label: I removed secrets and private credentials from this report.
+          required: true
+        - label: I redacted account emails, local paths, provider names, and auth-bearing URLs where they appear.
           required: true
         - label: I checked whether the issue reproduces in a temp home or after `bash bootstrap.sh --dry-run` when relevant.
           required: false

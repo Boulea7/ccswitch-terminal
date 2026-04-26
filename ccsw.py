@@ -6305,6 +6305,7 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
         if _refresh_active_codex_chatgpt_snapshot(store, allow_account_mismatch=True):
             save_store(store, expected_revision=store.get("_revision"))
         with _codex_cli_home(store) as env:
+            # The official login flow may update Codex-owned state outside ccswitch's provider lane.
             # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
             # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
             logout = subprocess.run([str(codex_path), "logout"], env=env)
