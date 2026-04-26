@@ -19,28 +19,37 @@
 
 ---
 
-## 它是做什么的
+## 项目简介
 
-`ccswitch` 是一个只用 Python 标准库实现的 CLI，适合同时使用多个 AI 终端工具、又不想每次都手改五套配置的人。
+`ccswitch` 是一个只用 Python 标准库实现的本地 CLI。它适合同时使用多个 AI 终端工具、又不想反复手改配置文件的人。
+
+它做三件事：
 
 - 用一个入口切换 Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw。
-- 给很长的 provider 名起短别名，比如 `openrouter -> op`，后面直接用 `ccsw op`、`cxsw op`。这也是这份 README 默认推荐的用法。
-- 对 Claude / Codex / Gemini 直接写 live config，对 OpenCode / OpenClaw 生成受管 overlay。
-- 自带 `profile`、`doctor`、`run`、`history`、`rollback`、`repair`、`import current` 这些实用命令。
-- 遇到配置不一致、secret 解析失败、快照同步异常、runtime lease 残留时，默认直接停下，不做半成功切换。
+- 把 provider、alias、profile、历史记录、恢复信息放在同一套本地状态里。
+- 遇到 secret 缺失、配置冲突、runtime lease 残留或快照异常时停止操作，避免半成功的配置写入。
 
-这份 README 用 `openrouter` 当主示例。你也可以照样配置 Vertex AI、AWS 托管网关，或者你自己的兼容中转；把 URL 和凭据替换成服务商文档里的实际值就可以。
+这份 README 用 `openrouter -> op` 当主示例。Vertex AI、AWS 托管网关、自建 OpenAI / Anthropic 兼容服务也可以按同样方式配置。
 
----
+## 功能亮点
+
+| 功能 | 说明 |
+|------|------|
+| 多工具切换 | Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw 共用一套 provider 管理 |
+| 短别名 | `openrouter -> op` 后可以直接用 `ccsw op`、`cxsw op` |
+| Profile 队列 | 给不同工具设置不同候选 provider，例如 Codex 先用 `op`，失败时再试 `vx` |
+| 官方 Codex 登录态 | 支持把官方 ChatGPT 登录态保存为 `pro`、`pro1` 等本地快照后顺序切换 |
+| 临时运行 | `ccsw run ...` 只影响当前命令，不悄悄改掉已保存的 active provider |
+| 诊断与恢复 | `doctor`、`history`、`rollback`、`repair` 用于检查和恢复本地状态 |
 
 ## 快速开始
 
 > [!IMPORTANT]
-> `ccswitch` 只负责管理已经装好的 CLI，不会替你安装 Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw。
+> `ccswitch` 管理的是已经安装好的 CLI。Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw 本身需要你先安装好。
 
-### 用 Claude Code 或 Codex 一键安装
+### 用 Claude Code 或 Codex 安装
 
-下面这段提示词直接复制到 Claude Code 或 Codex 里就能用。它会安装 `ccswitch`、添加第一个 provider、创建别名，并做基础验证。
+这是最推荐的安装入口。把下面这段提示词复制到 Claude Code 或 Codex，它会安装 `ccswitch`、添加第一个 provider、创建 alias，并做基础验证。
 
 ```text
 请帮我安装 ccswitch：
@@ -54,7 +63,7 @@ https://github.com/Boulea7/ccswitch-terminal
 
 然后帮我添加一个 provider，要求使用环境变量引用密钥：
 - provider 名称：openrouter
-- 安装后顺手创建一个别名：`op -> openrouter`
+- 安装后创建别名：`op -> openrouter`
 - Claude URL：<替换成服务商文档里的 Anthropic 兼容地址>
 - Claude token 环境变量：OR_CLAUDE_TOKEN
 - Codex URL：<替换成服务商文档里的 OpenAI 兼容地址>
@@ -72,19 +81,13 @@ https://github.com/Boulea7/ccswitch-terminal
 5. 最后用简体中文简短说明改了什么
 ```
 
-如果你想换成别的例子，流程完全一样，只需要换 provider 名和别名：
+常见 provider 命名可以保持简单：
 
-- `vertex` 配 `vx`
-- `aws` 配 `aws`
-
-安装好后的常见命令可以是：
-
-```bash
-ccsw alias vx vertex
-ccsw alias aws aws
-ccsw vx
-cxsw aws
-```
+| Provider | Alias |
+|----------|-------|
+| `openrouter` | `op` |
+| `vertex` | `vx` |
+| `aws` | `aws` |
 
 ### 手动安装
 
@@ -95,7 +98,7 @@ source ~/.zshrc   # 或 source ~/.bashrc
 python3 ~/ccsw/ccsw.py -h
 ```
 
-如果你想先看它准备改什么：
+想先看安装脚本准备改什么：
 
 ```bash
 bash ~/ccsw/bootstrap.sh --dry-run
@@ -104,19 +107,16 @@ bash ~/ccsw/bootstrap.sh --dry-run
 <details>
 <summary><b>Shell 说明</b></summary>
 
-- `bootstrap.sh` 跑完之后，`ccsw <provider>` 默认就是 `ccsw claude <provider>`，所以 `ccsw op` 会切 Claude Code。
+- `bootstrap.sh` 完成后，`ccsw <provider>` 默认等价于 `ccsw claude <provider>`。
 - `cxsw`、`gcsw`、`opsw`、`clawsw` 都是带内置 `eval` 的快捷封装。
-- 如果你用的是 `fish`、PowerShell 之类的非 POSIX shell，优先用 `python3 ccsw.py ...`，再把导出的环境变量按对应 shell 的语法处理，不要直接 `source ~/.ccswitch/*.env`。
+- `gcsw op` 这类命令只影响当前 shell session。
+- 如果使用 `fish`、PowerShell 或 nushell，优先调用 `python3 ccsw.py ...`，再把导出的环境变量按对应 shell 语法处理。
 
 </details>
 
----
+## 配置第一个 Provider
 
-## 60 秒配好第一个 Provider
-
-如果你想自己配第一条 provider，可以按这个顺序来。
-
-1. 先把密钥写进 `~/ccsw/.env.local`。
+1. 把真实密钥写进 `~/ccsw/.env.local`。
 
 ```bash
 OR_CLAUDE_TOKEN=<your-claude-token>
@@ -124,7 +124,7 @@ OR_CODEX_TOKEN=<your-codex-token>
 OR_GEMINI_KEY=<your-gemini-key>
 ```
 
-2. 添加 provider。
+2. 添加 provider。`ccswitch` 中只保存 `$ENV_VAR` 引用。
 
 ```bash
 ccsw add openrouter \
@@ -135,12 +135,9 @@ ccsw add openrouter \
   --gemini-key '$OR_GEMINI_KEY'
 ```
 
-3. 你可以直接用 provider 全名切换，也可以给它起一个短别名。
+3. 创建 alias 并切换。
 
 ```bash
-ccsw openrouter
-cxsw openrouter
-
 ccsw alias op openrouter
 ccsw op
 cxsw op
@@ -149,25 +146,54 @@ ccsw all op
 ccsw show
 ```
 
-4. 其他 provider 也照这个模式来。
+> [!NOTE]
+> `.env.local` 仍然是明文文件。它应该只留在本地，并保持未追踪、已被 git 忽略。新版本默认拒绝新的明文 secret 持久化，除非显式传 `--allow-literal-secrets`。
+
+## 常用命令
 
 ```bash
-ccsw alias vx vertex
-ccsw alias aws aws
+# 切换
+ccsw op                         # Claude Code
+cxsw op                         # Codex CLI
+gcsw op                         # Gemini CLI
+opsw op                         # OpenCode
+clawsw op                       # OpenClaw
+ccsw all op                     # 一次切全部
+
+# Provider 和 alias
+ccsw list
+ccsw show
+ccsw add <provider>
+ccsw remove <provider>
+ccsw alias <alias> <provider>
+
+# Profile 队列
+ccsw profile add work --codex op,vx --opencode op
+ccsw profile show work
+ccsw profile use work
+
+# 诊断和恢复
+ccsw doctor all
+ccsw doctor codex op --deep
+ccsw history --limit 20
+ccsw rollback codex
+ccsw repair codex
+ccsw import current codex rescued-codex
+
+# 当前命令临时使用 profile 候选 provider
+ccsw run codex work -- codex exec "hello"
 ```
 
-如果你想给 Codex CLI 单独保留一个“切回官方 ChatGPT 登录态”的入口，可以再加一个专用 provider：
+## Codex 官方登录与多账号
+
+如果你想给 Codex CLI 保留一个“切回官方 ChatGPT 登录态”的入口，可以添加一个 Codex-only provider：
 
 ```bash
 ccsw add pro --codex-auth-mode chatgpt
 cxsw pro
 ```
 
-这个模式不会写 `base_url`，也不会继续保留 `OPENAI_API_KEY` 覆盖项；它会把 Codex 切回内置 `openai` provider，并清掉 `OPENAI_BASE_URL` / `OPENAI_API_KEY` 这类会和官方登录态打架的覆盖值。
-
-只要你已经先在 Codex 里完成官方登录，这个 provider 就可以反复切回去。实现上只认 `auth_mode=chatgpt`，不依赖 `chatgpt_plan_type` 的具体字符串，所以像 `prolite`、后续可能出现的 `pro`，以及其他 ChatGPT 订阅登录态都能正常切换。
-
-如果你要在**同一台机器**上保留多个官方账号，建议把当前账号先记成 `pro`，后续账号按 `pro1`、`pro2` 往后排：
+如果要在同一台机器上保留多个官方账号，可以把当前账号保存为 `pro`，再登录并保存第二个账号为 `pro1`：
 
 ```bash
 ccsw capture codex pro
@@ -176,146 +202,38 @@ cxsw pro
 cxsw pro1
 ```
 
-`capture` 会把当前官方登录态保存成该 provider 的本地快照；`login` 会先跑官方 `codex logout` / `codex login`，再自动保存快照。切走当前官方账号前，`ccswitch` 也会先刷新它自己的快照，尽量跟上 refresh token 的轮换。
-
-这套快照只适合这台机器上的顺序切换，不适合手动复制 `~/.codex/auth.json` 去做跨机器共享。`ccsw import current codex <provider>` 仍然可用；如果当前 live Codex 已经在官方 ChatGPT lane 上，它也能导入同类 provider。若本地还残留旧的 relay 覆盖，优先用 `ccsw capture codex ...` 会更直接。
-
-> [!TIP]
-> `ccswitch` 只管理 Codex CLI 的登录态和 provider lane。Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接由 Codex 自己处理；如果看到 `codex_apps`、`openaiDeveloperDocs`、`deepwiki` 之类 MCP 握手失败，优先检查 Codex 版本、网络代理和 MCP 自身授权，不要把它直接当成 provider 切换失败。
-
-默认情况下，`cxsw pro` 仍然会走这条原生 `openai` 路径，不会和中转站共享 provider id，也不会改动旧 session。
-
-如果你只想让**后续新开的官方 Codex 会话**进入共享 lane，可以显式打开 future-only 开关：
+`capture` 会保存当前官方登录态；`login` 会运行官方 `codex logout` / `codex login`，再保存新账号。离开当前官方账号前，`ccswitch` 会刷新它自己的快照，以降低 refresh token 轮换后快照变旧的概率。
 
 ```bash
+# 默认关闭，只影响后续新开的官方 Codex 会话
 cxsw sync on
 cxsw pro
 cxsw sync status
 cxsw sync off
-```
 
-- `sync on` 只影响你**之后再次执行**的 `cxsw pro`
-- 已经存在的 `openai` / `ccswitch_active` 会话不会被迁移
-- `sync off` 后，再执行一次 `cxsw pro` 就会回到原生 `openai` lane
-
-如果你更想保留默认隔离，只在特殊情况下准备一条“可共享上下文”的新会话，可以先用 share recipe：
-
-```bash
+# 只保存共享会话的下一步建议，不自动切 provider 或 fork
 cxsw share prepare work pro --from last
 cxsw share status work
 cxsw share clear work
 ```
 
-`share prepare` 只会保存下一步建议命令，例如 `cxsw pro` 和 `codex fork ...`。它不会自动切换 provider，也不会自动 fork 或进入会话。
-
-### Alias（缩写）约定
-
-如果你准备长期用 `ccswitch`，建议平时就直接用 alias（缩写），不用把它当成偶尔才会用的快捷方式。
-
-推荐缩写可以保持简短、稳定、好记：
-
-| Provider | 推荐 alias（缩写） | 说明 |
-|----------|------------|------|
-| `openrouter` | `op` | 主 README 默认示例 |
-| `vertex` | `vx` | 比 `vertex` 更短，和 `op` 风格一致 |
-| `aws` | `aws` | 名字本身已经足够短 |
-
-```bash
-ccsw alias op openrouter
-ccsw alias vx vertex
-ccsw alias aws aws
-```
-
-后面你在命令行里优先输入短名：
-
-```bash
-ccsw op
-cxsw op
-ccsw all vx
-ccsw profile add work --codex op,vx --opencode op
-ccsw profile add cloud --claude aws --codex aws,op
-```
-
-当然，不建 alias 也能正常用，直接写 `ccsw openrouter`、`cxsw openrouter` 一样可以。
-
----
-
-## 常用命令
-
-```bash
-# 切换：推荐短别名；不建 alias 时也可以直接写 provider 全名
-ccsw op                         # Claude Code，前提是已经 bootstrap
-cxsw op                         # Codex CLI
-gcsw op                         # Gemini CLI
-opsw op                         # OpenCode
-clawsw op                       # OpenClaw
-ccsw all op                     # 一次切全部
-ccsw openrouter                 # 不使用 alias 的写法
-cxsw openrouter                 # 不使用 alias 的写法
-
-# 管理 provider
-ccsw list
-ccsw show
-ccsw add <provider>
-ccsw remove <provider>
-ccsw alias <alias> <provider>
-
-# Codex 官方账号快照
-cxsw capture <provider>
-cxsw login <provider>
-
-# Codex 共享控制（默认关闭）
-cxsw sync on|off|status
-cxsw share prepare <lane> <provider> --from last
-cxsw share status [lane]
-cxsw share clear <lane>
-
-# 复用队列
-ccsw profile add work --codex op,vx --opencode op
-ccsw profile add cloud --claude aws --codex aws,op
-ccsw profile show work
-ccsw profile use work
-
-# 诊断和恢复
-ccsw doctor all
-ccsw history --limit 20
-ccsw rollback codex
-ccsw repair codex
-ccsw import current codex rescued-codex
-ccsw run codex work -- codex exec "hello"
-```
-
-> [!NOTE]
-> `gcsw op` 只会影响当前 shell session。如果你直接调用 `python3 ccsw.py gemini ...` 或 `python3 ccsw.py codex ...`，记得用 `eval "$(python3 ccsw.py ...)"`。
-
----
-
-## 更多功能
-
 <details>
-<summary><b>默认把 secret 放进 <code>.env.local</code></b></summary>
+<summary><b>Codex 官方登录态的边界</b></summary>
 
-真实密钥建议放在 `~/ccsw/.env.local`，`ccswitch` 内部只保存 `$ENV_VAR` 引用。
-
-```bash
-# ~/ccsw/.env.local
-OR_CLAUDE_TOKEN=<your-claude-token>
-OR_CODEX_TOKEN=<your-codex-token>
-OR_GEMINI_KEY=<your-gemini-key>
-```
-
-- `ccswitch` 运行时会自动读这个文件。
-- 已经 `export` 到当前环境里的变量优先级更高。
-- `.env.local` 里仍然是明文 secret。它应该只留在本地，并保持未追踪、已被 git 忽略。
-- 成功切换后，解析出的真实密钥仍会写入目标工具的配置文件或激活文件。
-- 新版本默认不接受新的明文 secret 持久化，除非你显式传 `--allow-literal-secrets`。
+- `--codex-auth-mode chatgpt` 会把 Codex 切回内置 `openai` provider，并清掉 `OPENAI_BASE_URL` / `OPENAI_API_KEY` 这类会和官方登录态冲突的覆盖项。
+- 多账号快照只适合这台机器上的顺序切换，不适合手动复制 `~/.codex/auth.json` 做跨机器共享。
+- `sync on` 只影响之后再次执行的 `cxsw pro`，不会迁移旧会话。
+- `share prepare` 只保存建议命令，例如 `cxsw pro` 和 `codex fork ...`，不会自动进入会话。
+- `ccswitch` 只管理 Codex CLI 的登录态和 provider lane。Codex Apps、remote MCP server、OAuth、代理和 WebSocket 连接由 Codex 自己处理；如果看到 `codex_apps`、`openaiDeveloperDocs`、`deepwiki` 之类 MCP 启动失败，优先检查 Codex 版本、网络代理和 MCP 授权。
 
 </details>
+
+## 进阶功能
 
 <details>
 <summary><b>Profile、doctor、run</b></summary>
 
-如果不同工具想优先使用不同 provider，就用 profile。
+Profile 适合给不同工具设置不同候选 provider：
 
 ```bash
 ccsw profile add work \
@@ -334,7 +252,7 @@ ccsw doctor codex op --deep
 ccsw doctor codex op --json
 ```
 
-`run` 只影响这一条命令。它可以按照 profile 队列尝试下一个候选，但不会悄悄改掉你存下来的 active provider：
+`run` 只影响这一条命令。它可以按 profile 队列尝试候选 provider，但不会改掉保存的 active provider：
 
 ```bash
 ccsw run codex work -- codex exec "hello"
@@ -345,8 +263,8 @@ ccsw run codex work -- codex exec "hello"
 <details>
 <summary><b>import、rollback、repair</b></summary>
 
-- `import current`：把当前 live config 回收进 provider store。
-- `rollback`：当 live 状态仍和历史记录一致时，回退到上一个 provider。
+- `import current`：把当前 live config 保存进 provider store。
+- `rollback`：当 live 状态仍和历史记录一致时，回到上一个 provider。
 - `repair`：处理被中断的 `run` 留下的 stale runtime lease。
 
 ```bash
@@ -361,7 +279,7 @@ ccsw repair all
 <details>
 <summary><b>配置目录覆盖</b></summary>
 
-如果某个 CLI 的配置目录不在默认 home 位置，可以用 `settings` 指过去。
+如果某个 CLI 的配置目录不在默认 home 位置，可以用 `settings` 指过去：
 
 ```bash
 ccsw settings get
@@ -374,9 +292,9 @@ WSL 下优先使用 `/mnt/c/...` 这类 POSIX 路径。
 </details>
 
 <details>
-<summary><b>Codex 0.116+ 说明</b></summary>
+<summary><b>Codex 0.116+ 配置说明</b></summary>
 
-对 Codex，`ccswitch` 现在写的是自定义 `model_provider`，不再只依赖老的根级 `openai_base_url`。
+对 Codex，`ccswitch` 写的是自定义 `model_provider`，不再只依赖老的根级 `openai_base_url`。
 
 ```toml
 model_provider = "ccswitch_active"
@@ -390,14 +308,6 @@ wire_api = "responses"
 ```
 
 这对“支持 HTTP Responses、但不支持 Responses WebSocket”的 OpenAI 兼容中转尤其重要。
-
-如果 Codex provider 使用的是 `--codex-auth-mode chatgpt`，`ccswitch` 不会写上面的自定义 block，而是直接把 `model_provider` 切回内置 `openai`，同时清掉 `openai_base_url` 和 `OPENAI_API_KEY` 覆盖项，避免和官方 ChatGPT 登录态互相覆盖。
-
-多官方账号切换依赖 `ccswitch` 自己保存的本地私有快照，而不是建议你静态复制 `auth.json`。这样在切走当前账号前，可以先把最新登录态刷新回它自己的 provider，减少 refresh token 轮换带来的失效概率。
-
-Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接不属于 `ccswitch` 的 provider store。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` 这类启动错误通常需要从 Codex 版本、网络代理、MCP OAuth 或远端服务状态排查。
-
-如果你显式执行 `cxsw sync on`，后续再运行 `cxsw pro` 时，`ccswitch` 才会把 ChatGPT 登录态写到共享 lane 的 `ccswitch_active` provider id。这个开关只影响 future sessions，不会迁移旧会话。
 
 </details>
 
@@ -416,38 +326,19 @@ Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接不属
 
 </details>
 
----
-
 ## FAQ
 
 <details>
 <summary><b>为什么 <code>ccsw op</code> 能用，但 <code>python3 ccsw.py op</code> 不行？</b></summary>
 
-`ccsw op` 是 `bootstrap.sh` 装进去的 shell wrapper，它在省略工具名时默认补成 `claude`。而 Python CLI 本体仍然需要显式子命令，比如 `claude`、`codex`、`all`。
+`ccsw op` 是 `bootstrap.sh` 装进去的 shell wrapper，它在省略工具名时默认补成 `claude`。Python CLI 本体仍然需要显式子命令，比如 `claude`、`codex`、`all`。
 
 </details>
 
 <details>
-<summary><b>是不是建议每个 provider 都先配一个 alias（缩写）？</b></summary>
+<summary><b>是不是建议每个 provider 都配 alias？</b></summary>
 
-建议。尤其是你会频繁切换时，alias（缩写）会让 `ccsw op`、`cxsw op`、`ccsw all vx` 这类命令更短，也更适合写进 profile。
-
-一个简单的约定是：
-
-- `op = openrouter`
-- `vx = vertex`
-- `aws = aws`
-
-</details>
-
-<details>
-<summary><b>为什么运行 <code>gcsw op</code> 之后 <code>$GEMINI_API_KEY</code> 还是空的？</b></summary>
-
-先检查这三件事：
-
-1. `command -v gcsw`
-2. 你是不是还在同一个 shell session 里
-3. 如果你绕过 wrapper 直接调用 `python3 ccsw.py gemini ...`，有没有写 `eval "$(python3 ccsw.py gemini ...)"`。
+建议。频繁切换时，`ccsw op`、`cxsw op`、`ccsw all vx` 这类短命令更好输入，也更适合写进 profile。
 
 </details>
 
@@ -459,13 +350,11 @@ Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接不属
 </details>
 
 <details>
-<summary><b>除了 OpenRouter，还能不能配 Vertex AI、AWS，或者我自己的中转？</b></summary>
+<summary><b>除了 OpenRouter，还能不能配 Vertex AI、AWS，或者自己的中转？</b></summary>
 
-可以。`openrouter` 只是这份 README 里的主例子。把 URL 和凭据替换成服务商文档里的实际值，然后给它起一个你顺手的别名，比如 `vx` 或 `aws` 就行。
+可以。`openrouter` 只是这份 README 的主示例。把 URL 和凭据替换成服务商文档里的实际值，再给它起一个顺手的别名，比如 `vx` 或 `aws`。
 
 </details>
-
----
 
 ## 更多文档
 
@@ -476,11 +365,7 @@ Codex Apps、remote MCP server、OAuth 授权、代理和 WebSocket 连接不属
 - 支持入口：[SUPPORT.md](SUPPORT.md)
 - 社区规则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
----
-
 ## 开发与验证
-
-如果改了代码，最少跑这一组：
 
 ```bash
 bash bootstrap.sh --dry-run
@@ -488,19 +373,15 @@ python3 ccsw.py -h
 python3 -m unittest discover -s tests -q
 ```
 
-如果只是文档改动，至少重新检查公开文档表面、示例命令和交叉链接是不是都还对得上。
-
----
+如果只是文档改动，至少重新检查公开文档、示例命令和交叉链接。
 
 ## 依赖
 
-需要的只有 Python 3.9+。项目本身不依赖第三方包，也不需要额外 `pip install` 一串依赖。
+需要 Python 3.9+。项目本身不依赖第三方包，也不需要额外 `pip install`。
 
 ## License
 
 MIT
-
----
 
 <div align="right">
 

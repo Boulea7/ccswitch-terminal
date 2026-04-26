@@ -17,6 +17,7 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 - Changed ChatGPT-backed Codex switching to restore provider-specific local snapshots before writing `~/.codex/auth.json`, while also refreshing the current provider snapshot before switching away, so rotating refresh tokens are less likely to go stale.
 - Changed the public README set to document the new official multi-account workflow, including the local-only snapshot boundary and the new `cxsw capture` / `cxsw login` commands.
 - Clarified the public docs and security policy around the boundary between Codex ChatGPT login snapshots and Codex Apps / remote MCP / proxy / WebSocket startup failures.
+- Reworked the public README layout so installation, first-provider setup, core commands, and official Codex account switching stay visible, while longer compatibility and boundary notes move into folded reference sections.
 
 ## v0.1.1 - 2026-04-18
 

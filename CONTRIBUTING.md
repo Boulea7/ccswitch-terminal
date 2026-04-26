@@ -36,7 +36,8 @@ python3 -m unittest -q tests.test_bootstrap tests.test_cli_smoke
 If your change only touches docs, community-health files, or workflow metadata, you can usually skip the unittest suite and instead verify the affected docs/examples plus any changed workflow files. Be explicit in the PR about what you did and did not run.
 
 For docs-only changes to the public repo, run the lightweight docs consistency workflow locally where practical, or mirror its checks before opening the PR: public docs should link the release docs, keep localized quickstarts aligned, and avoid stale wording.
-When the README surface changes, keep the visible top structure aligned across all public README variants: banner, language switcher, primary install path, and links to support / security / release docs.
+When the README surface changes, keep the visible top structure aligned across all public README variants: banner, language switcher, feature overview, AI-assisted install prompt, manual install, first-provider setup, core commands, and links to support / security / release docs.
+The AI-assisted install prompt is a primary user path, not extra background. Keep it visible, and fold only longer compatibility notes or lower-frequency reference material.
 
 ## Coding Guidelines
 

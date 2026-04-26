@@ -23,7 +23,11 @@ This repository currently publishes release identity through Git tags and GitHub
    - `SUPPORT.md`
    - `SECURITY.md`
 4. Confirm public docs stand on their own for installation, support, contribution, and release flow without relying on private assistant notes.
-5. Run the minimum verification set from a clean working tree:
+5. Confirm README layout parity:
+   - the AI-assisted install prompt remains visible and is not folded
+   - all language variants follow the same section order and examples
+   - lower-frequency compatibility details are folded without hiding primary workflows
+6. Run the minimum verification set from a clean working tree:
 
 ```bash
 bash bootstrap.sh --dry-run
@@ -32,18 +36,19 @@ python3 ccsw.py list
 python3 -m unittest discover -s tests -q
 ```
 
-6. If the release touched bootstrap, command chaining, runtime lease behavior, overlays, or workflow/docs automation, also run:
+7. If the release touched bootstrap, command chaining, runtime lease behavior, overlays, or workflow/docs automation, also run:
 
 ```bash
 python3 -m unittest -q tests.test_bootstrap tests.test_cli_smoke
 ```
 
-7. Make sure GitHub Actions and CodeQL are green on the branch that will merge to `main`.
+8. Make sure GitHub Actions and CodeQL are green on the branch that will merge to `main`.
 
 ## Docs Consistency Check
 
 The repository CI includes a lightweight docs check. Before tagging, either let that workflow pass on the release branch or mirror its intent locally: public docs should link the release docs, localized quickstarts should point back to the English reference plus support/security pages, and stale wording should be cleaned up before the tag is created.
 Also confirm that the public README variants still agree on the top-level product surface: hero banner, language links, primary install guidance, and public support/release links.
+The AI-assisted install prompt is treated as a primary install path. Do not hide it inside a folded section when refreshing README layout.
 
 ## Tagging And Publishing
 

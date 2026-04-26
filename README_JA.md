@@ -19,28 +19,37 @@
 
 ---
 
-## 何をするツールか
+## 概要
 
-`ccswitch` は Python 標準ライブラリだけで動く CLI です。複数の AI ターミナルツールを使っていて、provider を切り替えるたびに設定ファイルを手で直したくない人向けのツールです。
+`ccswitch` は Python 標準ライブラリだけで動くローカル CLI です。複数の AI ターミナルツールを使い、provider を変えるたびに設定ファイルを手で編集したくない人向けです。
+
+主に 3 つのことをします。
 
 - Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw を 1 か所から切り替えます。
-- `openrouter -> op` のような短い alias を作って、`ccsw op` や `cxsw op` で切り替えられます。この README では、それを日常的な基本の使い方として扱っています。
-- Claude / Codex / Gemini には live config を書き込み、OpenCode / OpenClaw には managed overlay を生成します。
-- `profile`、`doctor`、`run`、`history`、`rollback`、`repair`、`import current` を使えます。
-- 状態が危ないときは中途半端に進めず、fail-closed で止まります。
+- provider、alias、profile、履歴、復旧メタデータを 1 つのローカル状態にまとめます。
+- secret、設定、runtime lease、snapshot が安全に続行できない状態なら停止します。
 
-この README では `openrouter` を主な例にしていますが、Vertex AI、AWS 系ゲートウェイ、自前 relay にも同じ流れで使えます。
+この README では `openrouter -> op` を主な例にしています。Vertex AI、AWS hosted gateway、自前の OpenAI / Anthropic 互換サービスも同じ流れで使えます。
 
----
+## ハイライト
+
+| 機能 | できること |
+|------|------------|
+| 複数ツールの切り替え | Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw を 1 つの provider store で管理 |
+| 短い alias | `openrouter -> op` を作って、`ccsw op` や `cxsw op` を使う |
+| profile queue | ツールごとに provider の順序を設定。例: Codex は `op` のあとに `vx` を試す |
+| 公式 Codex ログイン | ChatGPT backed の Codex ログインを `pro`、`pro1` などのローカル snapshot として保存 |
+| 1 コマンドだけの実行 | `ccsw run ...` はそのコマンドだけに作用し、保存済み active provider を書き換えません |
+| 復旧ツール | `doctor`、`history`、`rollback`、`repair` でローカル状態を確認・復旧 |
 
 ## クイックスタート
 
 > [!IMPORTANT]
-> `ccswitch` は既にインストール済みの CLI を管理するツールです。Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw 自体は先に入れておいてください。
+> `ccswitch` は既にインストール済みの CLI を管理します。Claude Code、Codex CLI、Gemini CLI、OpenCode、OpenClaw 自体は先に入れておいてください。
 
 ### Claude Code または Codex でインストール
 
-次のプロンプトを Claude Code または Codex に貼り付けてください。`ccswitch` のインストール、最初の provider 追加、alias 作成、確認までまとめてできます。
+これが推奨のインストール方法です。次のプロンプトを Claude Code または Codex に貼り付けてください。`ccswitch` のインストール、最初の provider 追加、alias 作成、確認まで実行します。
 
 ```text
 ccswitch を次のリポジトリからインストールしてください:
@@ -72,10 +81,13 @@ ccswitch 側には $ENV_VAR 参照だけを保存してください。
 5. 最後に何が変わったかを日本語で短く説明
 ```
 
-他の例:
+よく使う provider 名はシンプルで構いません。
 
-- `vertex` に alias `vx`
-- `aws` に alias `aws`
+| Provider | Alias |
+|----------|-------|
+| `openrouter` | `op` |
+| `vertex` | `vx` |
+| `aws` | `aws` |
 
 ### 手動インストール
 
@@ -86,7 +98,7 @@ source ~/.zshrc   # または source ~/.bashrc
 python3 ~/ccsw/ccsw.py -h
 ```
 
-変更内容だけ先に見たい場合:
+shell への変更を先に確認する場合:
 
 ```bash
 bash ~/ccsw/bootstrap.sh --dry-run
@@ -95,17 +107,16 @@ bash ~/ccsw/bootstrap.sh --dry-run
 <details>
 <summary><b>Shell メモ</b></summary>
 
-- `bootstrap.sh` 後の `ccsw <provider>` は `ccsw claude <provider>` と同じです。
-- `cxsw`、`gcsw`、`opsw`、`clawsw` には `eval` が組み込まれています。
-- `fish` や PowerShell では `python3 ccsw.py ...` を使い、export を各 shell の書式に合わせて扱ってください。
+- `bootstrap.sh` 後、`ccsw <provider>` は `ccsw claude <provider>` と同じです。
+- `cxsw`、`gcsw`、`opsw`、`clawsw` は `eval` を内蔵した convenience wrapper です。
+- `gcsw op` のようなコマンドは現在の shell session にだけ反映されます。
+- `fish`、PowerShell、nushell では `python3 ccsw.py ...` を使い、export をその shell の書式に合わせて扱ってください。
 
 </details>
 
----
+## 最初の Provider を設定する
 
-## 最初の Provider を 60 秒で作る
-
-1. `~/ccsw/.env.local` に秘密情報を書く。
+1. 実際の秘密情報を `~/ccsw/.env.local` に置きます。
 
 ```bash
 OR_CLAUDE_TOKEN=<your-claude-token>
@@ -113,7 +124,7 @@ OR_CODEX_TOKEN=<your-codex-token>
 OR_GEMINI_KEY=<your-gemini-key>
 ```
 
-2. provider を追加する。
+2. provider を追加します。`ccswitch` には `$ENV_VAR` 参照だけを保存します。
 
 ```bash
 ccsw add openrouter \
@@ -124,12 +135,9 @@ ccsw add openrouter \
   --gemini-key '$OR_GEMINI_KEY'
 ```
 
-3. provider 名をそのまま使うこともできますし、短い alias を作ることもできます。
+3. alias を作って切り替えます。
 
 ```bash
-ccsw openrouter
-cxsw openrouter
-
 ccsw alias op openrouter
 ccsw op
 cxsw op
@@ -138,119 +146,130 @@ ccsw all op
 ccsw show
 ```
 
-4. 他の provider にも同じパターンを使う。
-
-```bash
-ccsw alias vx vertex
-ccsw alias aws aws
-```
-
-### Alias（短縮名）の使い方
-
-`ccswitch` を継続的に使うなら、alias（短縮名）はたまに使う近道ではなく、普段のコマンド入力でそのまま使うのがおすすめです。
-
-おすすめの縮写はこんな形です。
-
-| Provider | 推奨 alias（短縮名） |
-|----------|------------|
-| `openrouter` | `op` |
-| `vertex` | `vx` |
-| `aws` | `aws` |
-
-```bash
-ccsw alias op openrouter
-ccsw alias vx vertex
-ccsw alias aws aws
-```
-
-以後は短い名前をそのまま使います。
-
-```bash
-ccsw op
-cxsw op
-ccsw all vx
-ccsw profile add work --codex op,vx --opencode op
-ccsw profile add cloud --claude aws --codex aws,op
-```
-
-もちろん alias を作らず、`ccsw openrouter` や `cxsw openrouter` を直接使ってもかまいません。
-
----
+> [!NOTE]
+> `.env.local` は平文です。ローカル専用・未追跡・git ignore 済みの状態にしてください。新しい literal secret は、`--allow-literal-secrets` を明示しない限り既定で拒否されます。
 
 ## 主なコマンド
 
 ```bash
-# 切り替え：alias 推奨。provider 名をそのまま書いても使えます
-ccsw op
-cxsw op
-gcsw op
-opsw op
-clawsw op
-ccsw all op
-ccsw openrouter
-cxsw openrouter
+# 切り替え
+ccsw op                         # Claude Code
+cxsw op                         # Codex CLI
+gcsw op                         # Gemini CLI
+opsw op                         # OpenCode
+clawsw op                       # OpenClaw
+ccsw all op                     # 設定済みツールをまとめて切り替え
 
+# Provider と alias
 ccsw list
 ccsw show
 ccsw add <provider>
 ccsw remove <provider>
 ccsw alias <alias> <provider>
 
-cxsw capture <provider>
-cxsw login <provider>
-
-cxsw sync on|off|status
-cxsw share prepare <lane> <provider> --from last
-cxsw share status [lane]
-cxsw share clear <lane>
-
+# Profile queue
 ccsw profile add work --codex op,vx --opencode op
-ccsw profile add cloud --claude aws --codex aws,op
 ccsw profile show work
 ccsw profile use work
 
+# 診断と復旧
 ccsw doctor all
+ccsw doctor codex op --deep
 ccsw history --limit 20
 ccsw rollback codex
 ccsw repair codex
 ccsw import current codex rescued-codex
+
+# profile の候補 provider をこのコマンドだけで使う
 ccsw run codex work -- codex exec "hello"
 ```
 
-> [!NOTE]
-> `gcsw op` は現在の shell にだけ反映されます。`python3 ccsw.py gemini ...` や `python3 ccsw.py codex ...` を直接使うときは `eval "$(python3 ccsw.py ...)"` を使ってください。
+## 公式 Codex ログインと複数アカウント
 
----
-
-## 追加機能
-
-<details>
-<summary><b>secret は <code>.env.local</code> に置く</b></summary>
-
-実際の token は `~/ccsw/.env.local` に置き、`ccswitch` には `$ENV_VAR` 参照だけを保存するのが基本です。
-
-`.env.local` 自体は平文なので、ローカル専用・未追跡のままにしてください。
-- 切り替えに成功すると、解決済みの secret は対象ツールの config / activation ファイルにも書き込まれます。
-- 新しい平文 secret は、`--allow-literal-secrets` を明示しない限り既定で拒否されます。
-
-</details>
-
-<details>
-<summary><b>profile、doctor、run</b></summary>
+公式 ChatGPT ログインへ戻る Codex-only provider が必要な場合は、専用 provider を追加します。
 
 ```bash
-ccsw profile add work --claude op --codex op,vx --gemini aws
+ccsw add pro --codex-auth-mode chatgpt
+cxsw pro
+```
+
+同じマシンで複数の公式アカウントを使う場合は、現在のアカウントを `pro` として保存し、次のアカウントをログインして `pro1` として保存します。
+
+```bash
+ccsw capture codex pro
+ccsw login codex pro1
+cxsw pro
+cxsw pro1
+```
+
+`capture` は現在の公式ログインを保存します。`login` は公式の `codex logout` / `codex login` フローを実行し、その後で新しいアカウントを保存します。現在の公式アカウントから離れる前に、`ccswitch` は snapshot を更新し、rotating refresh token が古くなる可能性を下げます。
+
+```bash
+# 既定では無効。将来の公式 Codex session だけに影響します
+cxsw sync on
+cxsw pro
+cxsw sync status
+cxsw sync off
+
+# provider 切り替えや fork はせず、共有 session 用の推奨コマンドだけ保存します
+cxsw share prepare work pro --from last
+cxsw share status work
+cxsw share clear work
+```
+
+<details>
+<summary><b>公式 Codex ログインの境界</b></summary>
+
+- `--codex-auth-mode chatgpt` は Codex を内蔵 `openai` provider に戻し、公式ログインと衝突する `OPENAI_BASE_URL` / `OPENAI_API_KEY` override を消します。
+- 複数アカウント snapshot は、このマシン上での順次切り替えだけを想定しています。`~/.codex/auth.json` を別マシンへコピーするためのものではありません。
+- `sync on` は次に `cxsw pro` を実行したときの動作だけを変えます。古い session は移行しません。
+- `share prepare` は `cxsw pro` や `codex fork ...` のような推奨コマンドだけを保存します。session には自動で入りません。
+- `ccswitch` が管理するのは Codex CLI のログイン状態と provider lane だけです。Codex Apps、remote MCP、OAuth、proxy、WebSocket は Codex 側の領域です。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` が MCP startup で失敗する場合は、まず Codex のバージョン、proxy、MCP 認可を確認してください。
+
+</details>
+
+## 高度な使い方
+
+<details>
+<summary><b>Profiles、doctor、run</b></summary>
+
+ツールごとに優先 provider が違う場合は profile を使います。
+
+```bash
+ccsw profile add work \
+  --claude op \
+  --codex op,vx \
+  --gemini aws
+
+ccsw profile use work
+```
+
+`doctor` は設定、パス、probe 状態を確認します。
+
+```bash
+ccsw doctor all
 ccsw doctor codex op --deep
+ccsw doctor codex op --json
+```
+
+`run` は 1 コマンドだけに作用します。保存済み active provider を変えずに、profile の候補を試せます。
+
+```bash
 ccsw run codex work -- codex exec "hello"
 ```
 
 </details>
 
 <details>
-<summary><b>import、rollback、repair</b></summary>
+<summary><b>Import、rollback、repair</b></summary>
+
+- `import current` は live config を provider store に保存します。
+- `rollback` は live state が履歴と一致している場合に前の provider へ戻します。
+- `repair` は中断された `run` が残した stale runtime lease を処理します。
 
 ```bash
 ccsw import current claude rescued-claude
+ccsw import current codex pro
 ccsw rollback codex
 ccsw repair all
 ```
@@ -260,75 +279,93 @@ ccsw repair all
 <details>
 <summary><b>設定ディレクトリの上書き</b></summary>
 
+管理対象 CLI が既定の home 以外に設定を保存する場合は `settings` を使います。
+
 ```bash
 ccsw settings get
 ccsw settings set codex_config_dir ~/.codex-alt
 ccsw settings set openclaw_config_dir ~/.openclaw-alt
 ```
 
+WSL では `/mnt/c/...` のような POSIX path を優先してください。
+
 </details>
 
 <details>
-<summary><b>Codex 0.116+ メモ</b></summary>
+<summary><b>Codex 0.116+ 設定メモ</b></summary>
 
-Codex では `model_provider` を明示的に書き、必要に応じて `supports_websockets = false` を設定します。
+Codex では、`ccswitch` は古い root-level `openai_base_url` だけに頼らず、custom `model_provider` block を書きます。
 
-同じマシンで複数の公式アカウントを使う場合は、現在のものを `cxsw capture pro` で保存し、次のものを `cxsw login pro1` で登録します。snapshot はローカル私有用途で、同じマシン上の順次切り替えだけを想定しています。`auth.json` を手で別マシンへコピーする運用は推奨しません。
+```toml
+model_provider = "ccswitch_active"
 
-`ccswitch` が管理するのは Codex CLI のログイン状態と provider lane だけです。Codex Apps、remote MCP、OAuth、proxy、WebSocket は Codex 側の領域です。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` の起動失敗は、provider 切り替え失敗と決めずに Codex のバージョン、proxy、MCP 認可を確認してください。
+[model_providers.ccswitch_active]
+name = "ccswitch: openrouter"
+base_url = "https://api.example.com/openai/v1"
+env_key = "OPENAI_API_KEY"
+supports_websockets = false
+wire_api = "responses"
+```
 
-`cxsw pro` はデフォルトでは内蔵 `openai` lane のままです。`cxsw sync on` を明示的に有効にしたあとで再度 `cxsw pro` を実行した場合だけ、将来の公式 ChatGPT セッションを共有 lane に寄せます。既存セッションは移行しません。
-
-`cxsw share prepare ...` は provider 切り替えや session fork を自動実行しません。次に打つべき `cxsw ...` / `codex fork ...` の recipe を保存するだけです。
+これは HTTP Responses には対応しているが Responses WebSocket transport には対応していない OpenAI 互換 relay で重要です。
 
 </details>
 
----
+<details>
+<summary><b>ccswitch が書き込むもの</b></summary>
+
+| ツール | 主な書き込み先 |
+|--------|----------------|
+| Claude Code | `~/.claude/settings.json` |
+| Codex CLI | `~/.codex/auth.json` と `~/.codex/config.toml` |
+| Gemini CLI | `~/.gemini/settings.json` と `~/.ccswitch/active.env` |
+| OpenCode | `~/.ccswitch/generated/opencode/` 以下の生成 overlay |
+| OpenClaw | `~/.ccswitch/generated/openclaw/` 以下の生成 overlay |
+
+主状態は `~/.ccswitch/ccswitch.db` に保存され、`~/.ccswitch/providers.json` は互換 snapshot として残ります。
+
+</details>
 
 ## FAQ
 
 <details>
 <summary><b>なぜ <code>ccsw op</code> は動くのに <code>python3 ccsw.py op</code> は動かないのですか？</b></summary>
 
-`ccsw op` は `bootstrap.sh` が入れる shell wrapper です。Python CLI 本体は明示的な subcommand を必要とします。
+`ccsw op` は `bootstrap.sh` が入れる shell wrapper です。ツール名を省略すると `claude` が既定になります。Python CLI 本体は `claude`、`codex`、`all` のような明示的 subcommand を必要とします。
 
 </details>
 
 <details>
-<summary><b>provider ごとに alias（短縮名）を作ったほうがいいですか？</b></summary>
+<summary><b>provider に alias を作ったほうがいいですか？</b></summary>
 
-たいていはそのほうが便利です。頻繁に切り替えるなら、`ccsw op`、`cxsw op`、`ccsw all vx` のような短いコマンドのほうが使いやすく、profile にもそのまま書きやすくなります。
-
-- `op = openrouter`
-- `vx = vertex`
-- `aws = aws`
+たいていは便利です。頻繁に切り替えるなら、`ccsw op`、`cxsw op`、`ccsw all vx` のような短いコマンドのほうが入力しやすく、profile にも再利用しやすくなります。
 
 </details>
 
 <details>
-<summary><b>OpenRouter 以外も使えますか？</b></summary>
+<summary><b><code>[claude] Skipped: token unresolved</code> は何ですか？</b></summary>
 
-はい。Vertex AI、AWS、自前 relay でも使えます。README では `openrouter` を主な例にしているだけです。
+provider が `$OR_CLAUDE_TOKEN` のような環境変数を指していますが、現在その変数がありません。`.env.local` に書くか、現在の shell で export してください。
 
 </details>
 
----
+<details>
+<summary><b>OpenRouter ではなく Vertex AI、AWS、自前 relay も使えますか？</b></summary>
+
+はい。`openrouter` はこの README の主な例です。URL と credential を provider のドキュメントにある値へ置き換え、`vx` や `aws` のような入力しやすい alias を作ってください。
+
+</details>
 
 ## さらに読む
 
-- English reference: [README_EN.md](README_EN.md)
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
-- Releasing: [RELEASING.md](RELEASING.md)
-- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Security: [SECURITY.md](SECURITY.md)
-- Support: [SUPPORT.md](SUPPORT.md)
-- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- 完全なリリースノート: [CHANGELOG.md](CHANGELOG.md)
+- リリース手順: [RELEASING.md](RELEASING.md)
+- コントリビューションガイド: [CONTRIBUTING.md](CONTRIBUTING.md)
+- セキュリティポリシー: [SECURITY.md](SECURITY.md)
+- サポートガイド: [SUPPORT.md](SUPPORT.md)
+- コミュニティルール: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
----
-
-## 検証
-
-コードを変えたら最低限これを実行します。
+## 開発と検証
 
 ```bash
 bash bootstrap.sh --dry-run
@@ -336,13 +373,11 @@ python3 ccsw.py -h
 python3 -m unittest discover -s tests -q
 ```
 
-ドキュメントだけの変更でも、公開 README 間のリンクとサンプルコマンドの整合性は確認してください。
-
----
+ドキュメントだけの変更でも、公開ドキュメント、サンプルコマンド、相互リンクは確認してください。
 
 ## 要件
 
-必要なのは Python 3.9+ だけです。追加のパッケージを `pip install` する必要はありません。
+必要なのは Python 3.9+ だけです。サードパーティ package への依存はなく、追加で `pip install` するものはありません。
 
 ## License
 
