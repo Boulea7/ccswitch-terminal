@@ -8,6 +8,8 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ## Unreleased
 
+## v0.1.2 - 2026-04-27
+
 ### Added
 
 - Added official multi-account Codex ChatGPT snapshot flows: `ccsw capture codex <provider>` to save the current official login, and `ccsw login codex <provider>` / `cxsw login <provider>` to run the official logout-login flow and capture the new account under names such as `pro`, `pro1`, and `pro2`.
