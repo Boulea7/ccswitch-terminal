@@ -198,11 +198,13 @@ cxsw pro
 ```bash
 ccsw capture codex pro
 ccsw login codex pro1
+cxsw accounts
+cxsw status
 cxsw pro
 cxsw pro1
 ```
 
-`capture` は現在の公式ログインを保存します。`login` は公式の `codex logout` / `codex login` フローを実行し、その後で新しいアカウントを保存します。現在の公式アカウントから離れる前に、`ccswitch` は snapshot を更新し、rotating refresh token が古くなる可能性を下げます。
+`capture` は現在の公式ログインを保存します。`login` はローカルの `auth.json` を一時的に隠してから公式の `codex login` フローを実行し、その後で新しいアカウントを保存します。先に `codex logout` は実行しないため、保存した直後の旧アカウント refresh token をすぐ無効化しにくくなります。`accounts` と `status` でローカル snapshot、現在のアカウント、Codex route を確認できます。
 
 ```bash
 # 既定では無効。将来の公式 Codex session だけに影響します
@@ -224,7 +226,7 @@ cxsw share clear work
 - 複数アカウント snapshot は、このマシン上での順次切り替えだけを想定しています。`~/.codex/auth.json` を別マシンへコピーするためのものではありません。
 - `sync on` は次に `cxsw pro` を実行したときの動作だけを変えます。古い session は移行しません。
 - `share prepare` は `cxsw pro` や `codex fork ...` のような推奨コマンドだけを保存します。session には自動で入りません。
-- `ccswitch` が管理するのは Codex CLI のログイン状態と provider lane だけです。Codex Apps、remote MCP、OAuth、proxy、WebSocket は Codex 側の領域です。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` が MCP startup で失敗する場合は、まず Codex のバージョン、proxy、MCP 認可を確認してください。
+- `ccswitch` が管理するのは Codex CLI の `auth.json` / `config.toml` と provider lane だけです。Codex Apps、remote MCP、OAuth、proxy、WebSocket は Codex 側の領域です。`codex_apps`、`openaiDeveloperDocs`、`deepwiki` が MCP startup で失敗する場合は、まず `cxsw status` でローカルアカウント状態を確認し、その後 Codex のバージョン、proxy、MCP 認可を確認してください。
 
 </details>
 

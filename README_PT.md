@@ -198,11 +198,13 @@ Para manter várias contas oficiais na mesma máquina, capture a conta atual com
 ```bash
 ccsw capture codex pro
 ccsw login codex pro1
+cxsw accounts
+cxsw status
 cxsw pro
 cxsw pro1
 ```
 
-`capture` salva o login oficial atual. `login` executa o fluxo oficial `codex logout` / `codex login` e depois salva a nova conta. Antes de sair da conta oficial atual, `ccswitch` atualiza o snapshot para reduzir a chance de tokens rotacionados ficarem antigos.
+`capture` salva o login oficial atual. `login` oculta temporariamente o `auth.json` local, executa o fluxo oficial `codex login` e depois salva a nova conta. Ele não executa `codex logout` primeiro, para evitar que o refresh token da conta anterior seja invalidado logo após o snapshot ser salvo. Use `accounts` e `status` para inspecionar snapshots locais, conta atual e route do Codex.
 
 ```bash
 # Desativado por padrão; afeta apenas sessões oficiais futuras do Codex
@@ -224,7 +226,7 @@ cxsw share clear work
 - Snapshots multi-conta foram pensados só para trocas sequenciais nesta máquina. Eles não são uma recomendação para copiar `~/.codex/auth.json` entre máquinas.
 - `sync on` só muda o que acontece na próxima execução de `cxsw pro`; ele não migra sessões antigas.
 - `share prepare` só salva comandos sugeridos, como `cxsw pro` e `codex fork ...`; ele não entra automaticamente em uma sessão.
-- `ccswitch` só gerencia o estado de login do Codex CLI e a lane do provider. Codex Apps, MCP remoto, OAuth, proxy e WebSocket continuam sendo responsabilidade do Codex. Se `codex_apps`, `openaiDeveloperDocs` ou `deepwiki` falharem ao iniciar MCP, verifique primeiro a versão do Codex, o proxy e a autorização MCP.
+- `ccswitch` só gerencia `auth.json` / `config.toml` do Codex CLI e a lane do provider. Codex Apps, MCP remoto, OAuth, proxy e WebSocket continuam sendo responsabilidade do Codex. Se `codex_apps`, `openaiDeveloperDocs` ou `deepwiki` falharem ao iniciar MCP, execute primeiro `cxsw status` para confirmar o estado local da conta e depois verifique a versão do Codex, o proxy e a autorização MCP.
 
 </details>
 

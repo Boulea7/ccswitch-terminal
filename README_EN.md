@@ -198,11 +198,13 @@ To keep multiple official accounts on the same machine, capture the current acco
 ```bash
 ccsw capture codex pro
 ccsw login codex pro1
+cxsw accounts
+cxsw status
 cxsw pro
 cxsw pro1
 ```
 
-`capture` saves the current official login. `login` runs the official `codex logout` / `codex login` flow and then saves the new account. Before switching away from the current official account, `ccswitch` refreshes its own snapshot so rotating refresh tokens are less likely to go stale.
+`capture` saves the current official login. `login` temporarily hides the local `auth.json`, runs the official `codex login` flow, and then saves the new account. It does not run `codex logout` first, so the old account's refresh token is not immediately invalidated after the snapshot is saved. Use `accounts` and `status` to inspect local snapshots, the current account, and the Codex route.
 
 ```bash
 # Off by default; affects only future official Codex sessions
@@ -224,7 +226,7 @@ cxsw share clear work
 - Multi-account snapshots are meant for sequential switching on this machine only. They are not a recommendation to copy `~/.codex/auth.json` between machines.
 - `sync on` only changes what happens the next time you run `cxsw pro`; it does not migrate older sessions.
 - `share prepare` only stores suggested commands such as `cxsw pro` and `codex fork ...`; it does not enter a session automatically.
-- `ccswitch` manages the Codex CLI login state and provider lane only. Codex Apps, remote MCP servers, OAuth, proxy routing, and WebSocket transport are still owned by Codex itself. If `codex_apps`, `openaiDeveloperDocs`, or `deepwiki` fails during MCP startup, check the Codex version, proxy path, and MCP authorization first.
+- `ccswitch` manages Codex CLI `auth.json` / `config.toml` and the provider lane only. Codex Apps, remote MCP servers, OAuth, proxy routing, and WebSocket transport are still owned by Codex itself. If `codex_apps`, `openaiDeveloperDocs`, or `deepwiki` fails during MCP startup, run `cxsw status` first to confirm local account state, then check the Codex version, proxy path, and MCP authorization.
 
 </details>
 

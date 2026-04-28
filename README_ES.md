@@ -198,11 +198,13 @@ Para mantener varias cuentas oficiales en la misma máquina, captura la cuenta a
 ```bash
 ccsw capture codex pro
 ccsw login codex pro1
+cxsw accounts
+cxsw status
 cxsw pro
 cxsw pro1
 ```
 
-`capture` guarda el login oficial actual. `login` ejecuta el flujo oficial `codex logout` / `codex login` y después guarda la nueva cuenta. Antes de salir de la cuenta oficial actual, `ccswitch` refresca su snapshot para reducir la probabilidad de que los refresh tokens rotados queden obsoletos.
+`capture` guarda el login oficial actual. `login` oculta temporalmente el `auth.json` local, ejecuta el flujo oficial `codex login` y después guarda la nueva cuenta. No ejecuta `codex logout` primero, para evitar que el refresh token de la cuenta anterior quede invalidado justo después de guardar el snapshot. Usa `accounts` y `status` para revisar snapshots locales, cuenta actual y route de Codex.
 
 ```bash
 # Desactivado por defecto; solo afecta sesiones oficiales futuras de Codex
@@ -224,7 +226,7 @@ cxsw share clear work
 - Los snapshots multi-cuenta están pensados solo para cambios secuenciales en esta máquina. No son una recomendación para copiar `~/.codex/auth.json` entre máquinas.
 - `sync on` solo cambia lo que ocurre la próxima vez que ejecutes `cxsw pro`; no migra sesiones anteriores.
 - `share prepare` solo guarda comandos sugeridos, como `cxsw pro` y `codex fork ...`; no entra automáticamente en una sesión.
-- `ccswitch` solo gestiona el login de Codex CLI y la lane del provider. Codex Apps, MCP remotos, OAuth, proxy y WebSocket siguen siendo responsabilidad de Codex. Si `codex_apps`, `openaiDeveloperDocs` o `deepwiki` fallan al iniciar MCP, revisa primero la versión de Codex, el proxy y la autorización MCP.
+- `ccswitch` solo gestiona `auth.json` / `config.toml` de Codex CLI y la lane del provider. Codex Apps, MCP remotos, OAuth, proxy y WebSocket siguen siendo responsabilidad de Codex. Si `codex_apps`, `openaiDeveloperDocs` o `deepwiki` fallan al iniciar MCP, ejecuta primero `cxsw status` para confirmar el estado local de la cuenta y luego revisa la versión de Codex, el proxy y la autorización MCP.
 
 </details>
 

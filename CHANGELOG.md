@@ -8,6 +8,15 @@ The format follows a simple Keep a Changelog style with `Added`, `Changed`, `Fix
 
 ## Unreleased
 
+### Added
+
+- Added `ccsw accounts codex` / `cxsw accounts` and `ccsw status codex` / `cxsw status` so local Codex ChatGPT snapshots, active provider state, live auth mode, and route can be inspected without guessing from switch errors.
+
+### Changed
+
+- Changed `ccsw login codex <provider>` / `cxsw login <provider>` to avoid calling `codex logout` before the next official login. The command now temporarily hides local `auth.json`, runs `codex login`, restores the original auth if login fails, and keeps the previous account snapshot from being invalidated by logout.
+- Changed the test package defaults so direct `python3 -m unittest discover -s tests -q` runs use isolated `HOME` / `CCSW_HOME` / `CCSW_FAKE_HOME` paths and clear managed provider environment variables.
+
 ## v0.1.2 - 2026-04-27
 
 ### Added

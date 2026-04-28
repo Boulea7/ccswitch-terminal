@@ -198,11 +198,13 @@ cxsw pro
 ```bash
 ccsw capture codex pro
 ccsw login codex pro1
+cxsw accounts
+cxsw status
 cxsw pro
 cxsw pro1
 ```
 
-`capture` 会保存当前官方登录态；`login` 会运行官方 `codex logout` / `codex login`，再保存新账号。离开当前官方账号前，`ccswitch` 会刷新它自己的快照，以降低 refresh token 轮换后快照变旧的概率。
+`capture` 会保存当前官方登录态；`login` 会先临时移走本地 `auth.json`，再运行官方 `codex login` 并保存新账号。它不会先执行 `codex logout`，这样可以避免把刚保存的旧账号 refresh token 立即作废。`accounts` 和 `status` 用来查看本机快照、当前账号和 Codex route 是否匹配。
 
 ```bash
 # 默认关闭，只影响后续新开的官方 Codex 会话
@@ -224,7 +226,7 @@ cxsw share clear work
 - 多账号快照只适合这台机器上的顺序切换，不适合手动复制 `~/.codex/auth.json` 做跨机器共享。
 - `sync on` 只影响之后再次执行的 `cxsw pro`，不会迁移旧会话。
 - `share prepare` 只保存建议命令，例如 `cxsw pro` 和 `codex fork ...`，不会自动进入会话。
-- `ccswitch` 只管理 Codex CLI 的登录态和 provider lane。Codex Apps、remote MCP server、OAuth、代理和 WebSocket 连接由 Codex 自己处理；如果看到 `codex_apps`、`openaiDeveloperDocs`、`deepwiki` 之类 MCP 启动失败，优先检查 Codex 版本、网络代理和 MCP 授权。
+- `ccswitch` 只管理 Codex CLI 的 `auth.json` / `config.toml` 和 provider lane。Codex Apps、remote MCP server、OAuth、代理和 WebSocket 连接由 Codex 自己处理；如果看到 `codex_apps`、`openaiDeveloperDocs`、`deepwiki` 之类 MCP 启动失败，先用 `cxsw status` 确认本地账号状态，再检查 Codex 版本、网络代理和 MCP 授权。
 
 </details>
 

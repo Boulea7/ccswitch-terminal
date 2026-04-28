@@ -97,13 +97,13 @@ ccsw() {{
       python3 "$_CCSW_PY" "$@" ;;
     codex|gemini|opencode|openclaw|all|profile|rollback)
       eval "$(python3 "$_CCSW_PY" "$@")" ;;
-    claude|list|show|add|remove|alias|settings|sync|share|capture|login|doctor|history|repair|import|run)
+    claude|list|show|add|remove|alias|settings|sync|share|capture|login|accounts|status|doctor|history|repair|import|run)
       python3 "$_CCSW_PY" "$@" ;;
     *)
       python3 "$_CCSW_PY" claude "$@" ;;
   esac
 }}
-# cxsw: codex shortcut, plus sync/share/login/capture helpers that do not emit shell exports
+# cxsw: codex shortcut, plus sync/share/login/capture/status helpers that do not emit shell exports
 cxsw() {{
   case "${{1:-}}" in
     sync)
@@ -118,6 +118,12 @@ cxsw() {{
     login)
       shift
       python3 "$_CCSW_PY" login codex "$@" ;;
+    accounts)
+      shift
+      python3 "$_CCSW_PY" accounts codex "$@" ;;
+    status)
+      shift
+      python3 "$_CCSW_PY" status codex "$@" ;;
     *)
       eval "$(python3 "$_CCSW_PY" codex "$@")" ;;
   esac
@@ -325,6 +331,8 @@ echo "  cxsw sync on|off|status          # Future Codex session sharing toggle"
 echo "  cxsw share prepare <lane> ...    # Prepare a Codex share recipe"
 echo "  cxsw capture <provider>          # Save current official Codex login"
 echo "  cxsw login <provider>            # Login to another official Codex account"
+echo "  cxsw accounts                    # List saved official Codex account snapshots"
+echo "  cxsw status                      # Show active official Codex account status"
 echo "  gcsw <provider>                   # Switch Gemini"
 echo "  opsw <provider>                   # Switch OpenCode"
 echo "  clawsw <provider>                 # Switch OpenClaw"

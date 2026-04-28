@@ -198,11 +198,13 @@ cxsw pro
 ```bash
 ccsw capture codex pro
 ccsw login codex pro1
+cxsw accounts
+cxsw status
 cxsw pro
 cxsw pro1
 ```
 
-`capture` сохраняет текущий официальный login. `login` запускает официальный поток `codex logout` / `codex login`, а затем сохраняет новый аккаунт. Перед выходом из текущего официального аккаунта `ccswitch` обновляет snapshot, чтобы снизить шанс устаревания rotating refresh tokens.
+`capture` сохраняет текущий официальный login. `login` временно скрывает локальный `auth.json`, запускает официальный поток `codex login`, а затем сохраняет новый аккаунт. Он не запускает `codex logout` первым, чтобы refresh token старого аккаунта не становился недействительным сразу после сохранения snapshot. Используйте `accounts` и `status`, чтобы проверить локальные snapshots, текущий аккаунт и route Codex.
 
 ```bash
 # По умолчанию выключено; влияет только на будущие официальные Codex sessions
@@ -224,7 +226,7 @@ cxsw share clear work
 - Multi-account snapshots предназначены только для последовательного переключения на этой машине. Это не рекомендация копировать `~/.codex/auth.json` между машинами.
 - `sync on` меняет только поведение следующего запуска `cxsw pro`; старые sessions не мигрируют.
 - `share prepare` только сохраняет предлагаемые команды, например `cxsw pro` и `codex fork ...`; он не входит в session автоматически.
-- `ccswitch` управляет только login state Codex CLI и provider lane. Codex Apps, remote MCP servers, OAuth, proxy routing и WebSocket transport остаются зоной Codex. Если `codex_apps`, `openaiDeveloperDocs` или `deepwiki` падают при MCP startup, сначала проверьте версию Codex, proxy и MCP authorization.
+- `ccswitch` управляет только `auth.json` / `config.toml` Codex CLI и provider lane. Codex Apps, remote MCP servers, OAuth, proxy routing и WebSocket transport остаются зоной Codex. Если `codex_apps`, `openaiDeveloperDocs` или `deepwiki` падают при MCP startup, сначала выполните `cxsw status`, чтобы проверить локальное состояние аккаунта, затем проверьте версию Codex, proxy и MCP authorization.
 
 </details>
 

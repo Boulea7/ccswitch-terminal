@@ -1,5 +1,8 @@
 import unittest
+import os
 from pathlib import Path
+
+import ccsw
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -29,6 +32,13 @@ class RepoWorkflowContractTests(unittest.TestCase):
         self.assertEqual(len(version_lines), 1, "ShellCheck step should pin exactly one explicit version")
         self.assertRegex(version_lines[0], r"^version:\s+v\d+\.\d+\.\d+$")
         self.assertNotIn("stable", version_lines[0])
+
+    def test_test_package_isolates_default_runtime_state(self) -> None:
+        self.assertIn("ccsw-test-home-", os.environ["HOME"])
+        self.assertTrue(str(ccsw.CCSWITCH_DIR).startswith(os.environ["HOME"]))
+        self.assertTrue(str(ccsw.CODEX_AUTH).startswith(os.environ["HOME"]))
+        self.assertNotIn("OPENCLAW_CONFIG_PATH", os.environ)
+        self.assertNotIn("OPENCLAW_PROFILE", os.environ)
 
 
 if __name__ == "__main__":

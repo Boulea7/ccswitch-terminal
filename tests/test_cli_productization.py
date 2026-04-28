@@ -9,7 +9,7 @@ import tempfile
 import threading
 import unittest
 from hashlib import sha256
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from argparse import Namespace
 from pathlib import Path
@@ -2039,6 +2039,22 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
         self.assertEqual(args.tool, "codex")
         self.assertEqual(args.name, "pro1")
 
+    def test_build_parser_accepts_accounts_codex_command(self) -> None:
+        parser = ccsw.build_parser()
+
+        args = parser.parse_args(["accounts", "codex"])
+
+        self.assertEqual(args.command, "accounts")
+        self.assertEqual(args.tool, "codex")
+
+    def test_build_parser_accepts_status_codex_command(self) -> None:
+        parser = ccsw.build_parser()
+
+        args = parser.parse_args(["status", "codex"])
+
+        self.assertEqual(args.command, "status")
+        self.assertEqual(args.tool, "codex")
+
     def test_import_current_codex_prefers_ccswitch_active_block(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2292,15 +2308,16 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 "settings": {"codex_config_dir": str(codex_dir)},
             }
 
+            calls: list[list[str]] = []
+
             def fake_run(argv: list[str], env: Optional[Dict[str, str]] = None, check: bool = False, **_: Any) -> subprocess.CompletedProcess[str]:
+                calls.append(argv[1:])
                 self.assertIsNotNone(env)
                 fake_home = Path(env["HOME"])
                 temp_codex_dir = fake_home / ".codex"
                 temp_codex_dir.mkdir(parents=True, exist_ok=True)
-                if argv[1:] == ["logout"]:
-                    (temp_codex_dir / "auth.json").write_text(json.dumps({}), encoding="utf-8")
-                    return subprocess.CompletedProcess(argv, 0, "", "")
                 if argv[1:] == ["login"]:
+                    self.assertFalse((temp_codex_dir / "auth.json").exists())
                     (temp_codex_dir / "auth.json").write_text(
                         json.dumps(
                             {
@@ -2331,6 +2348,7 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 ccsw.cmd_login(store, "codex", "pro1")
                 reloaded = ccsw.load_store()
 
+            self.assertEqual(calls, [["login"]])
             self.assertEqual(
                 reloaded["providers"]["pro"]["codex"],
                 {"auth_mode": "chatgpt", "account_id": "acct-pro"},
@@ -2404,14 +2422,15 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 "settings": {"codex_config_dir": str(codex_dir)},
             }
 
+            calls: list[list[str]] = []
+
             def fake_run(argv: list[str], env: Optional[Dict[str, str]] = None, check: bool = False, **_: Any) -> subprocess.CompletedProcess[str]:
+                calls.append(argv[1:])
                 self.assertIsNotNone(env)
                 temp_codex_dir = Path(env["HOME"]) / ".codex"
                 temp_codex_dir.mkdir(parents=True, exist_ok=True)
-                if argv[1:] == ["logout"]:
-                    (temp_codex_dir / "auth.json").write_text(json.dumps({}), encoding="utf-8")
-                    return subprocess.CompletedProcess(argv, 0, "", "")
                 if argv[1:] == ["login"]:
+                    self.assertFalse((temp_codex_dir / "auth.json").exists())
                     (temp_codex_dir / "auth.json").write_text(
                         json.dumps(
                             {
@@ -2442,6 +2461,7 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                 ccsw.cmd_login(store, "codex", "pro1")
                 reloaded = ccsw.load_store()
 
+            self.assertEqual(calls, [["login"]])
             self.assertEqual(reloaded["active"]["codex"], "pro1")
             self.assertEqual(
                 json.loads((snapshot_dir / "pro.json").read_text(encoding="utf-8")),
@@ -2457,6 +2477,136 @@ class ImportRollbackAndDoctorTests(unittest.TestCase):
                     "tokens": {"access_token": "fresh-pro1", "account_id": "acct-pro1"},
                 },
             )
+
+    def test_cmd_login_codex_restores_previous_auth_when_login_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            codex_dir.mkdir(parents=True)
+            original_auth = {
+                "auth_mode": "chatgpt",
+                "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+            }
+            (codex_dir / "auth.json").write_text(json.dumps(original_auth), encoding="utf-8")
+            (codex_dir / "config.toml").write_text('model_provider = "openai"\n', encoding="utf-8")
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {"pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}}},
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            def fake_run(argv: list[str], env: Optional[Dict[str, str]] = None, check: bool = False, **_: Any) -> subprocess.CompletedProcess[str]:
+                self.assertEqual(argv[1:], ["login"])
+                self.assertIsNotNone(env)
+                self.assertFalse((Path(env["HOME"]) / ".codex" / "auth.json").exists())
+                return subprocess.CompletedProcess(argv, 7, "", "")
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path), patch.object(
+                ccsw, "TMP_DIR", root / "tmp"
+            ), patch(
+                "ccsw.shutil.which",
+                return_value=sys.executable,
+            ), patch(
+                "ccsw.os.access",
+                return_value=True,
+            ), patch(
+                "ccsw.subprocess.run",
+                side_effect=fake_run,
+            ):
+                ccsw.save_store(store)
+                with self.assertRaises(SystemExit) as raised:
+                    ccsw.cmd_login(store, "codex", "pro1")
+
+            self.assertEqual(raised.exception.code, 7)
+            self.assertEqual(json.loads((codex_dir / "auth.json").read_text(encoding="utf-8")), original_auth)
+
+    def test_cmd_accounts_codex_shows_snapshot_and_current_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            snapshot_dir = root / "codex-chatgpt"
+            codex_dir.mkdir(parents=True)
+            snapshot_dir.mkdir(parents=True)
+            live_auth = {
+                "auth_mode": "chatgpt",
+                "tokens": {"access_token": "live-pro1", "account_id": "acct-pro1"},
+            }
+            (codex_dir / "auth.json").write_text(json.dumps(live_auth), encoding="utf-8")
+            (codex_dir / "config.toml").write_text('model_provider = "openai"\n', encoding="utf-8")
+            (snapshot_dir / "pro1.json").write_text(json.dumps(live_auth), encoding="utf-8")
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro1", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {
+                    "pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}},
+                    "pro1": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro1"}},
+                },
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path):
+                stderr = StringIO()
+                with redirect_stderr(stderr):
+                    ccsw.cmd_accounts(store, "codex")
+
+            output = stderr.getvalue()
+            self.assertIn("pro1", output)
+            self.assertIn("active", output)
+            self.assertIn("current", output)
+            self.assertIn("snapshot=ready", output)
+            self.assertIn("pro", output)
+            self.assertIn("snapshot=missing", output)
+
+    def test_cmd_status_codex_reports_live_route_and_snapshot_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "ccswitch.db"
+            providers_path = root / "providers.json"
+            codex_dir = root / ".codex"
+            snapshot_dir = root / "codex-chatgpt"
+            codex_dir.mkdir(parents=True)
+            snapshot_dir.mkdir(parents=True)
+            live_auth = {
+                "auth_mode": "chatgpt",
+                "tokens": {"access_token": "live-pro", "account_id": "acct-pro"},
+            }
+            (codex_dir / "auth.json").write_text(json.dumps(live_auth), encoding="utf-8")
+            (codex_dir / "config.toml").write_text('model_provider = "openai"\n', encoding="utf-8")
+            (snapshot_dir / "pro.json").write_text(json.dumps(live_auth), encoding="utf-8")
+            store = {
+                "version": 2,
+                "active": {"claude": None, "codex": "pro", "gemini": None, "opencode": None, "openclaw": None},
+                "aliases": {},
+                "providers": {"pro": {"codex": {"auth_mode": "chatgpt", "account_id": "acct-pro"}}},
+                "profiles": {},
+                "settings": {"codex_config_dir": str(codex_dir)},
+            }
+
+            with patch.object(ccsw, "CCSWITCH_DIR", root), patch.object(
+                ccsw, "DB_PATH", db_path
+            ), patch.object(ccsw, "PROVIDERS_PATH", providers_path):
+                stderr = StringIO()
+                with redirect_stderr(stderr):
+                    ccsw.cmd_status(store, "codex")
+
+            output = stderr.getvalue()
+            self.assertIn("active_provider=pro", output)
+            self.assertIn("live_auth=chatgpt", output)
+            self.assertIn("route=openai", output)
+            self.assertIn("snapshot=matches-live", output)
 
     def test_cmd_login_codex_errors_when_codex_executable_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

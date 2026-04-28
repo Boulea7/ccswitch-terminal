@@ -1763,6 +1763,17 @@ def _codex_chatgpt_account_hint(account_id: Optional[str]) -> Optional[str]:
     return account_id[:8]
 
 
+def _codex_chatgpt_auth_fingerprint(auth_data: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return a display-safe fingerprint for comparing local ChatGPT auth payloads."""
+    if not isinstance(auth_data, dict):
+        return None
+    normalized = _normalize_codex_chatgpt_auth(auth_data)
+    if not normalized:
+        return None
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _normalize_codex_chatgpt_auth(auth_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Drop provider overrides from a live ChatGPT auth payload."""
     if not _codex_has_chatgpt_login_state(auth_data):
@@ -1813,6 +1824,20 @@ def _load_codex_chatgpt_snapshot(provider_name: str) -> Optional[Dict[str, Any]]
         return None
     snapshot = load_json(path)
     return _normalize_codex_chatgpt_auth(snapshot)
+
+
+def _codex_chatgpt_snapshot_matches_auth(
+    snapshot: Optional[Dict[str, Any]],
+    auth_data: Optional[Dict[str, Any]],
+) -> bool:
+    """Return True when one saved snapshot appears to match the live ChatGPT auth."""
+    if not snapshot or not auth_data:
+        return False
+    snapshot_account = _codex_chatgpt_account_id(snapshot)
+    live_account = _codex_chatgpt_account_id(auth_data)
+    if snapshot_account and live_account:
+        return snapshot_account == live_account
+    return _codex_chatgpt_auth_fingerprint(snapshot) == _codex_chatgpt_auth_fingerprint(auth_data)
 
 
 def _delete_codex_chatgpt_snapshot(provider_name: str) -> bool:
@@ -1962,6 +1987,33 @@ def _codex_cli_home(store: Dict[str, Any]):
                         shutil.copy2(child, destination)
     finally:
         shutil.rmtree(temp_home, ignore_errors=True)
+
+
+@contextlib.contextmanager
+def _codex_auth_temporarily_cleared_for_login(store: Dict[str, Any]):
+    """Hide current Codex auth locally so `codex login` does not revoke the old account."""
+    auth_path = get_tool_paths(store, "codex")["auth"]
+    backup_path: Optional[Path] = None
+    if auth_path.exists():
+        _ensure_private_dir(_tmp_dir())
+        backup_path = _tmp_dir() / f"auth-login-backup-{datetime.now().strftime(BACKUP_SUFFIX_FMT)}.json"
+        shutil.copy2(auth_path, backup_path)
+        _ensure_private_file(backup_path)
+        auth_path.unlink()
+    try:
+        yield
+    except BaseException:
+        if backup_path and backup_path.exists():
+            _ensure_private_dir(auth_path.parent)
+            shutil.copy2(backup_path, auth_path)
+            _ensure_private_file(auth_path)
+        raise
+    finally:
+        if backup_path:
+            try:
+                backup_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def upsert_root_toml_value(path: Path, key: str, literal: str) -> None:
@@ -6275,6 +6327,100 @@ def _capture_codex_locked(store: Dict[str, Any], name: str) -> str:
     return canonical
 
 
+def _codex_live_route(store: Dict[str, Any]) -> Optional[str]:
+    """Return the selected Codex model provider route from config.toml."""
+    config_path = get_tool_paths(store, "codex")["config"]
+    if not config_path.exists():
+        return None
+    content = config_path.read_text(encoding="utf-8")
+    return _read_toml_string_value(content, "model_provider")
+
+
+def _codex_live_auth_label(auth_data: Dict[str, Any]) -> str:
+    """Return a compact label for the live Codex auth state."""
+    if auth_data.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT and _codex_has_chatgpt_login_state(auth_data):
+        return CODEX_AUTH_MODE_CHATGPT
+    if resolve_token(auth_data.get("OPENAI_API_KEY")):
+        return "api-key"
+    return "missing"
+
+
+def _codex_snapshot_state_for_provider(
+    store: Dict[str, Any],
+    provider_name: str,
+    auth_data: Dict[str, Any],
+) -> str:
+    """Describe one provider snapshot relative to the live auth payload."""
+    snapshot = _load_codex_chatgpt_snapshot(provider_name)
+    if not snapshot:
+        return "missing"
+    return "matches-live" if _codex_chatgpt_snapshot_matches_auth(snapshot, auth_data) else "ready"
+
+
+def cmd_accounts(store: Dict[str, Any], tool: str) -> None:
+    """List saved local account snapshots for one tool."""
+    if tool != "codex":
+        info(f"[error] Account snapshots are currently only supported for codex, not {tool}.")
+        sys.exit(1)
+    auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+    active_provider = store.get("active", {}).get("codex")
+    providers = store.get("providers", {})
+    rows: list[tuple[str, list[str]]] = []
+    for name in sorted(providers):
+        provider = providers.get(name)
+        conf = provider.get("codex") if isinstance(provider, dict) else None
+        if not _codex_uses_chatgpt_auth(conf):
+            continue
+        labels = []
+        if name == active_provider:
+            labels.append("active")
+        snapshot_state = _codex_snapshot_state_for_provider(store, name, auth_data)
+        if snapshot_state == "matches-live":
+            labels.append("current")
+            snapshot_label = "ready"
+        else:
+            snapshot_label = snapshot_state
+        labels.append(f"snapshot={snapshot_label}")
+        account_hint = _codex_chatgpt_account_hint(conf.get("account_id")) if isinstance(conf, dict) else None
+        labels.append(f"account={account_hint or 'unknown'}")
+        rows.append((name, labels))
+    if not rows:
+        info("No Codex ChatGPT account snapshots configured. Run: ccsw add pro --codex-auth-mode chatgpt")
+        return
+    info("Codex ChatGPT accounts:")
+    for name, labels in rows:
+        info(f"  {name}  ({', '.join(labels)})")
+
+
+def cmd_status(store: Dict[str, Any], tool: str) -> None:
+    """Show a compact status view for one tool."""
+    if tool != "codex":
+        info(f"[error] Status is currently only supported for codex, not {tool}.")
+        sys.exit(1)
+    auth_data = load_json(get_tool_paths(store, "codex")["auth"])
+    active_provider = store.get("active", {}).get("codex")
+    provider = store.get("providers", {}).get(active_provider) if active_provider else None
+    conf = provider.get("codex") if isinstance(provider, dict) else None
+    route = _codex_live_route(store) or "unknown"
+    live_account_hint = _codex_chatgpt_account_hint(_codex_chatgpt_account_id(auth_data))
+    snapshot_state = "not-chatgpt"
+    if active_provider and _codex_uses_chatgpt_auth(conf):
+        snapshot_state = _codex_snapshot_state_for_provider(store, active_provider, auth_data)
+    info(
+        "[codex] "
+        f"active_provider={active_provider or '(none)'} "
+        f"live_auth={_codex_live_auth_label(auth_data)} "
+        f"route={route} "
+        f"snapshot={snapshot_state} "
+        f"account={live_account_hint or 'unknown'}"
+    )
+    info(f"[codex-sync] future_sessions={'on' if _codex_sync_enabled(store) else 'off'}")
+    info(
+        "[codex-mcp] ccswitch manages Codex auth.json/config.toml only; "
+        "Codex Apps and remote MCP startup still depend on Codex, network, proxy, and MCP server availability."
+    )
+
+
 def cmd_capture(store: Dict[str, Any], tool: str, name: str) -> None:
     """Capture the current live official login into a saved provider."""
     if tool != "codex":
@@ -6304,21 +6450,18 @@ def cmd_login(store: Dict[str, Any], tool: str, name: str) -> None:
         canonical = _preflight_codex_chatgpt_provider_target(store, name)
         if _refresh_active_codex_chatgpt_snapshot(store, allow_account_mismatch=True):
             save_store(store, expected_revision=store.get("_revision"))
-        with _codex_cli_home(store) as env:
+        with _codex_auth_temporarily_cleared_for_login(store), _codex_cli_home(store) as env:
             # The official login flow may update Codex-owned state outside ccswitch's provider lane.
-            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
-            # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
-            logout = subprocess.run([str(codex_path), "logout"], env=env)
-            if logout.returncode != 0:
-                sys.exit(logout.returncode or 1)
+            # Do not run `codex logout` here: it can invalidate the previous account's refresh token,
+            # which would make the snapshot we just refreshed unusable for later account switches.
             # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
             # codex_path comes from shutil.which(), then resolve(), is_file(), and X_OK checks above.
             login = subprocess.run([str(codex_path), "login"], env=env)
             if login.returncode != 0:
                 sys.exit(login.returncode or 1)
-        canonical = _capture_codex_locked(store, canonical)
-        store.setdefault("active", {})["codex"] = canonical
-        save_store(store, expected_revision=store.get("_revision"))
+            canonical = _capture_codex_locked(store, canonical)
+            store.setdefault("active", {})["codex"] = canonical
+            save_store(store, expected_revision=store.get("_revision"))
     info(f"Captured current codex ChatGPT login into provider '{canonical}'.")
 
 
@@ -7929,6 +8072,12 @@ def build_parser() -> argparse.ArgumentParser:
     login_p.add_argument("tool", choices=("codex",))
     login_p.add_argument("name")
 
+    accounts_p = sub.add_parser("accounts", help="List saved local account snapshots")
+    accounts_p.add_argument("tool", choices=("codex",))
+
+    status_p = sub.add_parser("status", help="Show local account and route status")
+    status_p.add_argument("tool", choices=("codex",))
+
     doctor_p = sub.add_parser("doctor", help="Validate configuration and probe health")
     doctor_p.add_argument("tool", nargs="?", default="all", choices=(*ALL_TOOLS, "all"))
     doctor_p.add_argument("provider", nargs="?")
@@ -8042,6 +8191,10 @@ def main() -> None:
         cmd_capture(store, args.tool, args.name)
     elif args.command == "login":
         cmd_login(store, args.tool, args.name)
+    elif args.command == "accounts":
+        cmd_accounts(store, args.tool)
+    elif args.command == "status":
+        cmd_status(store, args.tool)
     elif args.command == "doctor":
         ok = cmd_doctor(
             store,
