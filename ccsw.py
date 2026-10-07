@@ -158,6 +158,17 @@ CODEX_SHARE_TOOL = "codex"
 CODEX_CHATGPT_SNAPSHOT_DIRNAME = "codex-chatgpt"
 _BOOL_TRUE_LITERALS = {"1", "on", "true", "yes"}
 _BOOL_FALSE_LITERALS = {"0", "off", "false", "no"}
+
+
+def _parse_cli_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
+
+
 RETRYABLE_PATTERNS = (
     "connection refused",
     "timed out",
@@ -1704,6 +1715,18 @@ def _codex_uses_chatgpt_auth(conf: Optional[Dict[str, Any]]) -> bool:
     return isinstance(conf, dict) and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT
 
 
+def _codex_supports_websockets(
+    conf: Optional[Dict[str, Any]],
+    store: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Resolve a provider's websocket policy, including legacy defaults."""
+    if isinstance(conf, dict) and isinstance(conf.get("supports_websockets"), bool):
+        return conf["supports_websockets"]
+    if _codex_uses_chatgpt_auth(conf) and isinstance(store, dict):
+        return _codex_sync_enabled(store)
+    return False
+
+
 def _codex_env_unsets(conf: Optional[Dict[str, Any]]) -> list[str]:
     """Return environment variables that must be cleared for one Codex auth mode."""
     if _codex_uses_chatgpt_auth(conf):
@@ -1711,8 +1734,13 @@ def _codex_env_unsets(conf: Optional[Dict[str, Any]]) -> list[str]:
     return ["OPENAI_BASE_URL"]
 
 
-def _codex_chatgpt_provider_route(store: Optional[Dict[str, Any]]) -> str:
+def _codex_chatgpt_provider_route(
+    store: Optional[Dict[str, Any]],
+    conf: Optional[Dict[str, Any]] = None,
+) -> str:
     """Return the provider id route to use for ChatGPT-backed Codex sessions."""
+    if isinstance(conf, dict) and isinstance(conf.get("supports_websockets"), bool):
+        return CODEX_PROVIDER_ID
     if isinstance(store, dict) and _codex_sync_enabled(store):
         return CODEX_PROVIDER_ID
     return CODEX_BUILTIN_PROVIDER_ID
@@ -1870,7 +1898,13 @@ def _preflight_codex_chatgpt_provider_target(store: Dict[str, Any], name: str) -
     return canonical
 
 
-def _update_codex_chatgpt_provider(store: Dict[str, Any], provider_name: str, auth_data: Dict[str, Any]) -> Dict[str, Any]:
+def _update_codex_chatgpt_provider(
+    store: Dict[str, Any],
+    provider_name: str,
+    auth_data: Dict[str, Any],
+    *,
+    supports_websockets: Optional[bool] = None,
+) -> Dict[str, Any]:
     """Capture the current ChatGPT login into one provider and update store metadata."""
     providers = store.setdefault("providers", {})
     provider = providers.get(provider_name, {})
@@ -1889,6 +1923,8 @@ def _update_codex_chatgpt_provider(store: Dict[str, Any], provider_name: str, au
         sys.exit(1)
     updated_conf = dict(existing_conf)
     updated_conf.update(_save_codex_chatgpt_snapshot(provider_name, auth_data))
+    if isinstance(supports_websockets, bool):
+        updated_conf["supports_websockets"] = supports_websockets
     for field in ("token", "base_url", "fallback_base_url", "provider_route"):
         updated_conf.pop(field, None)
     provider["codex"] = updated_conf
@@ -2160,8 +2196,14 @@ def remove_toml_table_block(path: Path, header: str) -> None:
     save_text(path, content)
 
 
-def upsert_codex_provider_config(path: Path, provider_name: str, base_url: str) -> None:
-    """Configure Codex to use a custom provider that disables websocket transport."""
+def upsert_codex_provider_config(
+    path: Path,
+    provider_name: str,
+    base_url: str,
+    *,
+    supports_websockets: bool = False,
+) -> None:
+    """Configure Codex to use a custom provider with the requested transport policy."""
     upsert_root_toml_string(path, "model_provider", CODEX_PROVIDER_ID)
     remove_root_toml_key(path, "openai_base_url")
     replace_toml_table_block(
@@ -2171,7 +2213,7 @@ def upsert_codex_provider_config(path: Path, provider_name: str, base_url: str) 
             f'name = {_toml_string(f"ccswitch: {provider_name}")}',
             f"base_url = {_toml_string(base_url)}",
             'env_key = "OPENAI_API_KEY"',
-            "supports_websockets = false",
+            f"supports_websockets = {'true' if supports_websockets else 'false'}",
             'wire_api = "responses"',
         ],
     )
@@ -2184,7 +2226,12 @@ def upsert_codex_chatgpt_config(path: Path) -> None:
     remove_toml_table_block(path, f"[model_providers.{CODEX_PROVIDER_ID}]")
 
 
-def upsert_codex_chatgpt_shared_config(path: Path, provider_name: str) -> None:
+def upsert_codex_chatgpt_shared_config(
+    path: Path,
+    provider_name: str,
+    *,
+    supports_websockets: bool = True,
+) -> None:
     """Route ChatGPT auth through the shared ccswitch provider lane."""
     upsert_root_toml_string(path, "model_provider", CODEX_PROVIDER_ID)
     remove_root_toml_key(path, "openai_base_url")
@@ -2194,7 +2241,7 @@ def upsert_codex_chatgpt_shared_config(path: Path, provider_name: str) -> None:
         [
             f'name = {_toml_string(f"ccswitch: {provider_name}")}',
             "requires_openai_auth = true",
-            "supports_websockets = true",
+            f"supports_websockets = {'true' if supports_websockets else 'false'}",
             'wire_api = "responses"',
         ],
     )
@@ -4145,11 +4192,14 @@ def cmd_show(store: Dict[str, Any]) -> None:
             details = []
             if tool == "codex" and conf and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
                 details.append("auth=chatgpt")
-                details.append(f"route={_codex_chatgpt_provider_route(store)}")
+                details.append(f"websockets={'on' if _codex_supports_websockets(conf, store) else 'off'}")
+                details.append(f"route={_codex_chatgpt_provider_route(store, conf)}")
                 details.append(f"snapshot={'ready' if _codex_chatgpt_snapshot_exists(name) else 'missing'}")
                 account_hint = _codex_chatgpt_account_hint(conf.get("account_id"))
                 if account_hint:
                     details.append(f"account={account_hint}")
+            elif tool == "codex" and conf:
+                details.append(f"websockets={'on' if _codex_supports_websockets(conf, store) else 'off'}")
             if base_url:
                 details.append(f"url={base_url}")
             if fallback_base_url:
@@ -4327,7 +4377,8 @@ def cmd_add(store: Dict[str, Any], name: str, args: argparse.Namespace) -> None:
 
     has_flags = any([
         args.claude_url, args.claude_token,
-        args.codex_url, args.codex_fallback_url, args.codex_token, getattr(args, "codex_auth_mode", None),
+        args.codex_url, args.codex_fallback_url, args.codex_token,
+        getattr(args, "codex_auth_mode", None), getattr(args, "codex_websockets", None) is not None,
         args.gemini_key,
         args.opencode_url, args.opencode_token, args.opencode_model,
         args.openclaw_url, args.openclaw_token, args.openclaw_model,
@@ -4360,10 +4411,39 @@ def _add_from_flags(conf: Dict[str, Any], args: argparse.Namespace) -> None:
         c.setdefault("extra_env", {})
         conf["claude"] = c
 
-    if args.codex_url or args.codex_fallback_url or args.codex_token:
-        if codex_auth_mode == CODEX_AUTH_MODE_CHATGPT:
+    codex_websockets = getattr(args, "codex_websockets", None)
+    if (
+        codex_websockets is not None
+        and codex_auth_mode is None
+        and not (args.codex_url or args.codex_fallback_url or args.codex_token)
+    ):
+        existing_codex = conf.get("codex")
+        has_chatgpt_auth = _codex_uses_chatgpt_auth(existing_codex)
+        has_third_party_auth = (
+            isinstance(existing_codex, dict)
+            and isinstance(existing_codex.get("base_url"), str)
+            and bool(existing_codex.get("base_url"))
+            and isinstance(existing_codex.get("token"), str)
+            and bool(existing_codex.get("token"))
+        )
+        if not (has_chatgpt_auth or has_third_party_auth):
+            info(
+                "[error] --codex-websockets requires an existing Codex configuration. "
+                "Use --codex-auth-mode chatgpt or provide --codex-url and --codex-token."
+            )
+            sys.exit(1)
+    if codex_auth_mode == CODEX_AUTH_MODE_CHATGPT:
+        if args.codex_url or args.codex_fallback_url or args.codex_token:
             info("[error] --codex-auth-mode chatgpt cannot be combined with --codex-url/--codex-fallback-url/--codex-token.")
             sys.exit(1)
+        existing_websockets = (conf.get("codex") or {}).get("supports_websockets")
+        c = {"auth_mode": CODEX_AUTH_MODE_CHATGPT}
+        if isinstance(existing_websockets, bool):
+            c["supports_websockets"] = existing_websockets
+        if codex_websockets is not None:
+            c["supports_websockets"] = codex_websockets
+        conf["codex"] = c
+    elif args.codex_url or args.codex_fallback_url or args.codex_token or codex_websockets is not None:
         c = conf.get("codex") or {}
         if args.codex_url:
             c["base_url"] = args.codex_url
@@ -4372,10 +4452,11 @@ def _add_from_flags(conf: Dict[str, Any], args: argparse.Namespace) -> None:
         if args.codex_token:
             _require_secret_ref("codex token", args.codex_token, allow_literal=allow_literal)
             c["token"] = args.codex_token
-        c.pop("auth_mode", None)
+        if codex_websockets is not None:
+            c["supports_websockets"] = codex_websockets
+        if args.codex_url or args.codex_fallback_url or args.codex_token:
+            c.pop("auth_mode", None)
         conf["codex"] = c
-    elif codex_auth_mode == CODEX_AUTH_MODE_CHATGPT:
-        conf["codex"] = {"auth_mode": CODEX_AUTH_MODE_CHATGPT}
 
     if args.gemini_key:
         c = conf.get("gemini") or {}
@@ -4543,7 +4624,7 @@ def write_codex(
 ) -> Optional[list]:
     """Write Codex auth.json + config.toml. Returns env pairs on success, None on failure."""
     if _codex_uses_chatgpt_auth(conf):
-        provider_route = _codex_chatgpt_provider_route(store)
+        provider_route = _codex_chatgpt_provider_route(store, conf)
         paths = get_tool_paths(store, "codex")
         auth_path = paths["auth"]
         config_path = paths["config"]
@@ -4585,7 +4666,11 @@ def write_codex(
         def _persist() -> None:
             save_json(auth_path, target_auth)
             if provider_route == CODEX_PROVIDER_ID:
-                upsert_codex_chatgpt_shared_config(config_path, provider_name)
+                upsert_codex_chatgpt_shared_config(
+                    config_path,
+                    provider_name,
+                    supports_websockets=_codex_supports_websockets(conf, store),
+                )
             else:
                 upsert_codex_chatgpt_config(config_path)
             if write_activation_file:
@@ -4629,7 +4714,12 @@ def write_codex(
 
     def _persist() -> None:
         save_json(auth_path, data)
-        upsert_codex_provider_config(config_path, provider_name, base_url)
+        upsert_codex_provider_config(
+            config_path,
+            provider_name,
+            base_url,
+            supports_websockets=_codex_supports_websockets(conf, store),
+        )
         if write_activation_file:
             write_shell_exports(
                 _codex_env_path(),
@@ -4968,12 +5058,17 @@ def _local_restore_validation(
         if not live:
             return {"status": "failed", "reason_code": "live_config_missing"}
         if _codex_uses_chatgpt_auth(conf):
-            expected_route = _codex_chatgpt_provider_route(store)
+            expected_route = _codex_chatgpt_provider_route(store, conf)
             mismatch_fields = []
             if live.get("auth_mode") != CODEX_AUTH_MODE_CHATGPT:
                 mismatch_fields.append("auth_mode")
             if live.get("provider_route") != expected_route:
                 mismatch_fields.append("provider_route")
+            if (
+                expected_route == CODEX_PROVIDER_ID
+                and live.get("supports_websockets") != _codex_supports_websockets(conf, store)
+            ):
+                mismatch_fields.append("supports_websockets")
             if conf.get("account_id") and live.get("account_id") and live.get("account_id") != conf.get("account_id"):
                 mismatch_fields.append("account_id")
             return {
@@ -4991,6 +5086,10 @@ def _local_restore_validation(
             for key, mismatched in (
                 ("token", live.get("token") != resolve_token(conf.get("token"))),
                 ("base_url", bool(expected_base_urls) and live.get("base_url") not in expected_base_urls),
+                (
+                    "supports_websockets",
+                    live.get("supports_websockets") != _codex_supports_websockets(conf, store),
+                ),
             )
             if mismatched
         ]
@@ -5903,7 +6002,7 @@ def _codex_share_recipe_commands(cwd: str, provider_name: str, thread_id: str) -
 def _codex_target_model_provider_id(store: Dict[str, Any], conf: Dict[str, Any]) -> str:
     """Return the Codex provider id expected after switching to this provider."""
     if _codex_uses_chatgpt_auth(conf):
-        return _codex_chatgpt_provider_route(store)
+        return _codex_chatgpt_provider_route(store, conf)
     return CODEX_PROVIDER_ID
 
 
@@ -6057,6 +6156,7 @@ def _read_current_codex(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if selected_block
         else False
     )
+    selected_supports_websockets = _read_toml_literal_value(selected_block, "supports_websockets") if selected_block else None
     if (
         auth.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT
         and not auth.get("OPENAI_API_KEY")
@@ -6065,6 +6165,8 @@ def _read_current_codex(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     ):
         provider_route = CODEX_PROVIDER_ID if current_provider == CODEX_PROVIDER_ID else CODEX_BUILTIN_PROVIDER_ID
         conf: Dict[str, Any] = {"auth_mode": CODEX_AUTH_MODE_CHATGPT, "provider_route": provider_route}
+        if selected_supports_websockets in {"true", "false"}:
+            conf["supports_websockets"] = selected_supports_websockets == "true"
         account_id = _codex_chatgpt_account_id(auth)
         if account_id:
             conf["account_id"] = account_id
@@ -6074,6 +6176,8 @@ def _read_current_codex(store: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not token:
         return None
     conf: Dict[str, Any] = {"token": token}
+    if selected_supports_websockets in {"true", "false"}:
+        conf["supports_websockets"] = selected_supports_websockets == "true"
     if selected_block:
         selected_base_url = _read_toml_string_value(selected_block, "base_url")
         if selected_base_url:
@@ -6137,7 +6241,7 @@ def _clear_absent_import_fields(
 ) -> None:
     """Drop optional metadata that is no longer present in the live config."""
     optional_fields: Dict[str, tuple[str, ...]] = {
-        "codex": ("auth_mode", "provider_route"),
+        "codex": ("auth_mode", "provider_route", "supports_websockets"),
         "gemini": ("auth_type",),
         "opencode": ("headers", "npm", "model"),
         "openclaw": ("api", "profile", "model"),
@@ -6301,7 +6405,17 @@ def cmd_import_current(
                 _reject_literal_secret("imported gemini api_key")
             conf["api_key"] = preserved
         elif tool == "codex" and conf.get("auth_mode") == CODEX_AUTH_MODE_CHATGPT:
-            conf = _update_codex_chatgpt_provider(store, canonical, load_json(get_tool_paths(store, "codex")["auth"]))
+            imported_supports_websockets = conf.get("supports_websockets")
+            conf = _update_codex_chatgpt_provider(
+                store,
+                canonical,
+                load_json(get_tool_paths(store, "codex")["auth"]),
+                supports_websockets=imported_supports_websockets
+                if isinstance(imported_supports_websockets, bool)
+                else None,
+            )
+            if not isinstance(imported_supports_websockets, bool):
+                conf.pop("supports_websockets", None)
         else:
             preserved = _preserve_secret_ref(existing_conf.get("token"), conf.get("token"))
             if not allow_literal_secrets and not _is_env_ref(preserved):
@@ -7140,6 +7254,7 @@ def _probe_codex_target(
             "openai_base_url": root_openai_base_url,
             "provider_requires_openai_auth": _read_toml_literal_value(provider_block, "requires_openai_auth"),
             "provider_supports_websockets": _read_toml_literal_value(provider_block, "supports_websockets"),
+            "expected_supports_websockets": _codex_supports_websockets(conf, store),
             "provider_wire_api": _read_toml_string_value(provider_block, "wire_api"),
             "snapshot_exists": _codex_chatgpt_snapshot_exists(provider_name),
         }
@@ -7147,7 +7262,7 @@ def _probe_codex_target(
         mismatch_fields: list[str] = []
         if config_checks["auth_mode"] != CODEX_AUTH_MODE_CHATGPT:
             mismatch_fields.append("auth_mode")
-        expected_route = _codex_chatgpt_provider_route(store)
+        expected_route = _codex_chatgpt_provider_route(store, conf)
         provider_supports_chatgpt = (
             config_checks["model_provider"] == CODEX_BUILTIN_PROVIDER_ID
             or config_checks["provider_requires_openai_auth"] == "true"
@@ -7157,7 +7272,8 @@ def _probe_codex_target(
         elif config_checks["model_provider"] != expected_route:
             mismatch_fields.append("provider_route")
         if config_checks["model_provider"] == CODEX_PROVIDER_ID:
-            if config_checks["provider_supports_websockets"] != "true":
+            expected_websockets = "true" if config_checks["expected_supports_websockets"] else "false"
+            if config_checks["provider_supports_websockets"] != expected_websockets:
                 mismatch_fields.append("provider_supports_websockets")
             if config_checks["provider_wire_api"] != "responses":
                 mismatch_fields.append("provider_wire_api")
@@ -7429,6 +7545,7 @@ def _probe_codex_target(
         "provider_base_url": _read_toml_string_value(provider_block, "base_url"),
         "provider_env_key": _read_toml_string_value(provider_block, "env_key"),
         "provider_supports_websockets": _read_toml_literal_value(provider_block, "supports_websockets"),
+        "expected_supports_websockets": _codex_supports_websockets(conf, store),
         "provider_wire_api": _read_toml_string_value(provider_block, "wire_api"),
     }
     config_status = "ok"
@@ -7442,7 +7559,8 @@ def _probe_codex_target(
     if config_checks["provider_env_key"] != "OPENAI_API_KEY":
         config_status = "degraded"
         config_mismatch_fields.append("provider_env_key")
-    if config_checks["provider_supports_websockets"] != "false":
+    expected_websockets = "true" if config_checks["expected_supports_websockets"] else "false"
+    if config_checks["provider_supports_websockets"] != expected_websockets:
         config_status = "degraded"
         config_mismatch_fields.append("provider_supports_websockets")
     if config_checks["provider_wire_api"] != "responses":
@@ -7994,6 +8112,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_p.add_argument("--codex-fallback-url", metavar="URL")
     add_p.add_argument("--codex-token", metavar="TOKEN", help="$ENV_VAR or literal")
     add_p.add_argument("--codex-auth-mode", choices=[CODEX_AUTH_MODE_CHATGPT])
+    add_p.add_argument(
+        "--codex-websockets",
+        type=_parse_cli_bool,
+        metavar="true|false",
+        help="Enable or disable Codex websocket transport for this provider",
+    )
     add_p.add_argument("--gemini-key", metavar="KEY", help="$ENV_VAR or literal")
     add_p.add_argument("--gemini-auth-type", metavar="TYPE", default=None)
     add_p.add_argument("--opencode-url", metavar="URL")

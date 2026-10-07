@@ -193,6 +193,8 @@ ccsw add pro --codex-auth-mode chatgpt
 cxsw pro
 ```
 
+Defina a política de WebSocket do Codex por provider com `--codex-websockets true|false`. Quando omitido, providers de terceiros usam `false`; ChatGPT auth usa `true` quando a sincronização de futuras sessões está ativa.
+
 Para manter várias contas oficiais na mesma máquina, capture a conta atual como `pro`, depois faça login e salve a segunda conta como `pro1`:
 
 ```bash
@@ -308,6 +310,8 @@ env_key = "OPENAI_API_KEY"
 supports_websockets = false
 wire_api = "responses"
 ```
+
+Ao trocar de provider, o valor persistido de `supports_websockets` é reutilizado. Um valor explícito usa o shared lane mesmo com a sincronização desativada, para que a configuração tenha efeito.
 
 Isso importa para relays compatíveis com OpenAI que suportam HTTP Responses, mas não o transporte Responses WebSocket.
 

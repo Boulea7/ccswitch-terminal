@@ -193,6 +193,8 @@ ccsw add pro --codex-auth-mode chatgpt
 cxsw pro
 ```
 
+Codex の WebSocket 方針は provider ごとに `--codex-websockets true|false` で指定できます。省略時はサードパーティ provider が `false`、future sync が有効な ChatGPT auth は `true` です。
+
 同じマシンで複数の公式アカウントを使う場合は、現在のアカウントを `pro` として保存し、次のアカウントをログインして `pro1` として保存します。
 
 ```bash
@@ -308,6 +310,8 @@ env_key = "OPENAI_API_KEY"
 supports_websockets = false
 wire_api = "responses"
 ```
+
+provider を切り替えても保存済みの `supports_websockets` 値が使われます。明示的な値を指定した場合は、future sync がオフでも shared lane を使い、設定を実際の Codex 構成に反映します。
 
 これは HTTP Responses には対応しているが Responses WebSocket transport には対応していない OpenAI 互換 relay で重要です。
 

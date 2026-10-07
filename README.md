@@ -193,6 +193,8 @@ ccsw add pro --codex-auth-mode chatgpt
 cxsw pro
 ```
 
+可在 provider 级别显式控制 Codex WebSocket：`--codex-websockets true|false`。未指定时，第三方 provider 默认 `false`；ChatGPT auth 在 future sync 开启时默认 `true`。
+
 如果要在同一台机器上保留多个官方账号，可以把当前账号保存为 `pro`，再登录并保存第二个账号为 `pro1`：
 
 ```bash
@@ -308,6 +310,8 @@ env_key = "OPENAI_API_KEY"
 supports_websockets = false
 wire_api = "responses"
 ```
+
+切换 provider 会使用各自保存的 `supports_websockets` 值。显式设置该值时，即使 future sync 关闭，也会使用 shared lane 以确保配置真正生效。
 
 这对“支持 HTTP Responses、但不支持 Responses WebSocket”的 OpenAI 兼容中转尤其重要。
 
