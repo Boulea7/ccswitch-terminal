@@ -99,6 +99,69 @@ class CodexWebsocketConfigTests(unittest.TestCase):
                 {"auth_mode": "chatgpt", "supports_websockets": False},
             )
 
+    def test_cli_websocket_only_update_preserves_third_party_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CCSW_HOME": str(root / ".ccswitch"),
+                    "CCSW_FAKE_HOME": str(root / "home"),
+                    "CCSW_LOCAL_ENV_PATH": str(root / ".env.local"),
+                    "RELAY_TOKEN": "relay-token",
+                }
+            )
+            (root / "home").mkdir()
+            (root / ".env.local").write_text("", encoding="utf-8")
+            for args in (
+                ("add", "relay", "--codex-url", "https://relay.example/v1", "--codex-token", "$RELAY_TOKEN"),
+                ("add", "relay", "--codex-websockets", "true"),
+            ):
+                subprocess.run(
+                    [sys.executable, "ccsw.py", *args],
+                    cwd=REPO_ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=10,
+                )
+            providers = json.loads((root / ".ccswitch" / "providers.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                providers["providers"]["relay"]["codex"],
+                {
+                    "base_url": "https://relay.example/v1",
+                    "token": "$RELAY_TOKEN",
+                    "supports_websockets": True,
+                },
+            )
+
+    def test_cli_websocket_only_update_fails_for_fresh_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CCSW_HOME": str(root / ".ccswitch"),
+                    "CCSW_FAKE_HOME": str(root / "home"),
+                    "CCSW_LOCAL_ENV_PATH": str(root / ".env.local"),
+                }
+            )
+            (root / "home").mkdir()
+            (root / ".env.local").write_text("", encoding="utf-8")
+            for value in ("false", "true"):
+                result = subprocess.run(
+                    [sys.executable, "ccsw.py", "add", f"fresh-{value}", "--codex-websockets", value],
+                    cwd=REPO_ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("--codex-auth-mode chatgpt", result.stdout + result.stderr)
+            self.assertFalse((root / ".ccswitch" / "providers.json").exists())
+
     def test_chatgpt_explicit_false_is_written_to_shared_lane(self) -> None:
         parser = ccsw.build_parser()
         args = parser.parse_args(

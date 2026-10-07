@@ -4412,6 +4412,26 @@ def _add_from_flags(conf: Dict[str, Any], args: argparse.Namespace) -> None:
         conf["claude"] = c
 
     codex_websockets = getattr(args, "codex_websockets", None)
+    if (
+        codex_websockets is not None
+        and codex_auth_mode is None
+        and not (args.codex_url or args.codex_fallback_url or args.codex_token)
+    ):
+        existing_codex = conf.get("codex")
+        has_chatgpt_auth = _codex_uses_chatgpt_auth(existing_codex)
+        has_third_party_auth = (
+            isinstance(existing_codex, dict)
+            and isinstance(existing_codex.get("base_url"), str)
+            and bool(existing_codex.get("base_url"))
+            and isinstance(existing_codex.get("token"), str)
+            and bool(existing_codex.get("token"))
+        )
+        if not (has_chatgpt_auth or has_third_party_auth):
+            info(
+                "[error] --codex-websockets requires an existing Codex configuration. "
+                "Use --codex-auth-mode chatgpt or provide --codex-url and --codex-token."
+            )
+            sys.exit(1)
     if codex_auth_mode == CODEX_AUTH_MODE_CHATGPT:
         if args.codex_url or args.codex_fallback_url or args.codex_token:
             info("[error] --codex-auth-mode chatgpt cannot be combined with --codex-url/--codex-fallback-url/--codex-token.")
