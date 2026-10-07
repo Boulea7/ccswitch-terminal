@@ -311,7 +311,7 @@ supports_websockets = false
 wire_api = "responses"
 ```
 
-Switching providers reuses each provider's persisted `supports_websockets` value.
+Switching providers reuses each provider's persisted `supports_websockets` value. An explicit value uses the shared lane even when future-session sync is off, so the setting takes effect.
 
 This matters for OpenAI-compatible relays that support HTTP Responses but not the Responses WebSocket transport.
 

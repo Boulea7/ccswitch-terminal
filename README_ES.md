@@ -311,7 +311,7 @@ supports_websockets = false
 wire_api = "responses"
 ```
 
-Al cambiar de provider se conserva su valor guardado de `supports_websockets`.
+Al cambiar de provider se conserva su valor guardado de `supports_websockets`. Un valor explícito usa el shared lane incluso con la sincronización desactivada, para que la configuración sea efectiva.
 
 Esto importa para relays compatibles con OpenAI que soportan HTTP Responses pero no el transporte Responses WebSocket.
 

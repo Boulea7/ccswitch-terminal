@@ -311,7 +311,7 @@ supports_websockets = false
 wire_api = "responses"
 ```
 
-切换 provider 会使用各自保存的 `supports_websockets` 值。
+切换 provider 会使用各自保存的 `supports_websockets` 值。显式设置该值时，即使 future sync 关闭，也会使用 shared lane 以确保配置真正生效。
 
 这对“支持 HTTP Responses、但不支持 Responses WebSocket”的 OpenAI 兼容中转尤其重要。
 

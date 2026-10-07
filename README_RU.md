@@ -311,7 +311,7 @@ supports_websockets = false
 wire_api = "responses"
 ```
 
-При переключении provider используется сохранённое для него значение `supports_websockets`.
+При переключении provider используется сохранённое для него значение `supports_websockets`. Явно заданное значение использует shared lane даже при отключённой синхронизации будущих сессий, чтобы настройка действительно применялась.
 
 Это важно для OpenAI-compatible relays, которые поддерживают HTTP Responses, но не поддерживают Responses WebSocket transport.
 

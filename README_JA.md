@@ -311,7 +311,7 @@ supports_websockets = false
 wire_api = "responses"
 ```
 
-provider を切り替えても保存済みの `supports_websockets` 値が使われます。
+provider を切り替えても保存済みの `supports_websockets` 値が使われます。明示的な値を指定した場合は、future sync がオフでも shared lane を使い、設定を実際の Codex 構成に反映します。
 
 これは HTTP Responses には対応しているが Responses WebSocket transport には対応していない OpenAI 互換 relay で重要です。
 
